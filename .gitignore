@@ -1,3 +1,6 @@
+# Intellij project configuration directory
+.idea
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
