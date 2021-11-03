@@ -28,16 +28,13 @@ jobs:
           key: go-mod-v4-{{ checksum "go.sum" }}
           paths:
             - "/go/pkg/mod"
-      - run:
-          name: Install goveralls
-          command: go install github.com/mattn/goveralls
       - test:
           pre:
             - go install github.com/mattn/goveralls@latest
           override:
             - go test -v -cover -race -coverprofile=./coverage.out
           post:
-            - goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN
+            - $(go env GOPATH | awk 'BEGIN{FS=":"} {print $1}')/bin/goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN
 
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows
