@@ -30,7 +30,6 @@ jobs:
           command: |
             go install github.com/mattn/goveralls@latest
             go test -v -cover -race -coverprofile=./coverage.out
-            echo $COVERALLS_TOKEN
             $(go env GOPATH | awk 'BEGIN{FS=":"} {print $1}')/bin/goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN
 
 
