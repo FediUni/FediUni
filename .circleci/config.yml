@@ -1,10 +1,7 @@
 # Use the latest 2.1 version of CircleCI pipeline process engine.
 # See: https://circleci.com/docs/2.0/configuration-reference
 version: 2.1
-
-orbs:
-  coveralls: coveralls/coveralls@1.0.6
-
+        
 # Define a job to be invoked later in a workflow.
 # See: https://circleci.com/docs/2.0/configuration-reference/#jobs
 jobs:
@@ -28,18 +25,17 @@ jobs:
           key: go-mod-v4-{{ checksum "go.sum" }}
           paths:
             - "/go/pkg/mod"
-      - test:
-          pre:
-            - go install github.com/mattn/goveralls@latest
-          override:
-            - go test -v -cover -race -coverprofile=./coverage.out
-          post:
-            - $(go env GOPATH | awk 'BEGIN{FS=":"} {print $1}')/bin/goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN
+      - run:
+          name: Test with coverage
+          command: |
+            go install github.com/mattn/goveralls@latest
+            go test -v -cover -race -coverprofile=./coverage.out
+            $(go env GOPATH | awk 'BEGIN{FS=":"} {print $1}')/bin/goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN
 
-# Invoke jobs via workflows
-# See: https://circleci.com/docs/2.0/configuration-reference/#workflows
+
 workflows:
-  sample: # This is the name of the workflow, feel free to change it to better match your workflow.
+  buildandtest: # This is the name of the workflow, feel free to change it to better match your workflow.
     # Inside the workflow, you define the jobs you want to run.
     jobs:
-      - build
+      - build:
+          context: COVERALLS_TOKEN
