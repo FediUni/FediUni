@@ -34,7 +34,7 @@ jobs:
             go test -coverprofile=c.out
             go tool cover -html=c.out -o coverage.html
             mv coverage.html /tmp/artifacts
-        - coveralls/upload
+      - coveralls/upload
       - store_artifacts:
           path: /tmp/artifacts
 
