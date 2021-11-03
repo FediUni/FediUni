@@ -29,14 +29,18 @@ jobs:
           paths:
             - "/go/pkg/mod"
       - run:
+          name: Install Coveralls Dependencies
+          command: |
+            go get golang.org/x/tools/cmd/cover
+            go get github.com/mattn/goveralls
+      - run:
           name: Run tests with coverage
           command: |
-            go test -coverprofile=c.out
-            go tool cover -html=c.out -o coverage.html
-            mv coverage.html /tmp/artifacts
+            go test -v -covermode=count -coverprofile=coverage.out
+            $HOME/gopath/bin/goveralls -coverprofile=coverage.out
       - coveralls/upload
       - store_artifacts:
-          path: /tmp/artifacts
+          path: ./coverage.out
 
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows
