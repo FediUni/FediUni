@@ -36,11 +36,10 @@ jobs:
       - run:
           name: Run tests with coverage
           command: |
-            go test -v -covermode=count -coverprofile=coverage.out
-            $HOME/gopath/bin/goveralls -coverprofile=coverage.out
+            go test -v -covermode=count -coverprofile=./coverage/lcov.info
       - coveralls/upload
       - store_artifacts:
-          path: ./coverage.out
+          path: ./coverage/lcov.info
 
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows
