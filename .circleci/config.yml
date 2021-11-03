@@ -2,6 +2,9 @@
 # See: https://circleci.com/docs/2.0/configuration-reference
 version: 2.1
 
+orbs:
+  coveralls: coveralls/coveralls@1.0.6
+
 # Define a job to be invoked later in a workflow.
 # See: https://circleci.com/docs/2.0/configuration-reference/#jobs
 jobs:
@@ -31,6 +34,7 @@ jobs:
             go test -coverprofile=c.out
             go tool cover -html=c.out -o coverage.html
             mv coverage.html /tmp/artifacts
+        - coveralls/upload
       - store_artifacts:
           path: /tmp/artifacts
 
