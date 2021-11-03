@@ -36,6 +36,7 @@ jobs:
       - run:
           name: Run tests with coverage
           command: |
+            mkdir ./coverage
             go test -v -covermode=count -coverprofile=./coverage/lcov.info
       - coveralls/upload
       - store_artifacts:
