@@ -31,8 +31,7 @@ func getActor(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte("Actor lookup is unimplemented."))
+	http.Error(w, "actor lookup is unimplemented", http.StatusNotImplemented)
 }
 
 func getActorInbox(w http.ResponseWriter, r *http.Request) {
@@ -41,8 +40,7 @@ func getActorInbox(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte("Actor inbox lookup is unimplemented."))
+	http.Error(w, "actor inbox lookup is unimplemented", http.StatusNotImplemented)
 }
 
 func getActorOutbox(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +49,5 @@ func getActorOutbox(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte("Actor outbox lookup is unimplemented."))
+	http.Error(w, "actor outbox lookup is unimplemented", http.StatusNotImplemented)
 }
