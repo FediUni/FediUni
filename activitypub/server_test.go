@@ -8,7 +8,8 @@ import (
 )
 
 func TestGetActor(t *testing.T) {
-	server := httptest.NewServer(newRouter())
+	s := NewServer(nil, nil)
+	server := httptest.NewServer(s.Router)
 	defer server.Close()
 	resp, err := http.Get(fmt.Sprintf("%s/actor/bendean", server.URL))
 	if err != nil {
