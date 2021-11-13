@@ -26,7 +26,7 @@ func main() {
 		log.Fatalln(err)
 	}
 	s := activitypub.NewServer(instanceConfig, datastore)
-	log.Infof("FediUni Instance: %s listening on port %d", config.URL, *port)
+	log.Infof("FediUni Instance: %s listening on port %d", instanceConfig.URL, *port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), s.Router); err != nil {
 		log.Fatalln(err)
 	}
