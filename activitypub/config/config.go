@@ -1,9 +1,7 @@
 package config
 
-import "flag"
-
-var (
-	URL = flag.String("fediuni_url", "", "This is the URL for this FediUni instance.")
+import (
+	"os"
 )
 
 // Config stores details for the current instance of FediUni to be used when
@@ -14,7 +12,8 @@ type Config struct {
 
 // New returns an instance of Config based on the provided flags.
 func New() *Config {
+	URL := os.Getenv("FEDIUNI_URL")
 	return &Config{
-		URL: *URL,
+		URL: URL,
 	}
 }

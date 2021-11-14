@@ -7,6 +7,7 @@ import (
 	"github.com/FediUni/FediUni/activitypub/config"
 	"github.com/FediUni/FediUni/activitypub/mongowrapper"
 	"net/http"
+	"os"
 
 	"github.com/FediUni/FediUni/activitypub"
 
@@ -14,17 +15,19 @@ import (
 )
 
 var (
-	mongoURI = flag.String("mongo_uri", "", "This is the URI to be used when connecting to MongoDB")
-	port     = flag.Int("port", 8080, "The port for the FediUni instance to listen on")
+	port = flag.Int("port", 8080, "The port for the FediUni instance to listen on")
 )
 
 func main() {
-	ctx := context.Background()
+	mongoURI := os.Getenv("MONGO_URI")
 	instanceConfig := config.New()
-	datastore, err := mongowrapper.NewDatastore(ctx, *mongoURI)
+
+	ctx := context.Background()
+	datastore, err := mongowrapper.NewDatastore(ctx, mongoURI)
 	if err != nil {
 		log.Fatalln(err)
 	}
+
 	s := activitypub.NewServer(instanceConfig, datastore)
 	log.Infof("FediUni Instance: %s listening on port %d", instanceConfig.URL, *port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), s.Router); err != nil {
