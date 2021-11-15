@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // Datastore wraps the MongoDB client and handles MongoDB operations.
@@ -14,11 +13,7 @@ type Datastore struct {
 }
 
 // NewDatastore returns an initialized Datastore which handles MongoDB operations.
-func NewDatastore(ctx context.Context, uri string) (*Datastore, error) {
-	client, err := mongo.Connect(ctx, options.Client(), options.Client().ApplyURI(uri))
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to MongoDB: %v", err)
-	}
+func NewDatastore(client *mongo.Client) (*Datastore, error) {
 	return &Datastore{
 		client: client,
 	}, nil
@@ -27,4 +22,8 @@ func NewDatastore(ctx context.Context, uri string) (*Datastore, error) {
 // GetActor returns an instance of Person from Mongo.
 func (d *Datastore) GetActor(_ context.Context, id string) (*actor.Person, error) {
 	return nil, fmt.Errorf("failed to retrieve actor by ID=%s: unimplemented", id)
+}
+
+func (d *Datastore) CreateActor(_ context.Context, actor *actor.Person) error {
+	return fmt.Errorf("failed to write actor with ID=%s: unimplemented", actor.Id)
 }

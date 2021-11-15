@@ -12,6 +12,7 @@ import (
 
 type Datastore interface {
 	GetActor(context.Context, string) (*actor.Person, error)
+	CreateActor(context.Context, *actor.Person) error
 }
 
 type Server struct {
