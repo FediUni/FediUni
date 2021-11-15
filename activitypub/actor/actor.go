@@ -1,6 +1,6 @@
 package actor
 
-// Person is a type of Actor defined by https://www.w3.org/TR/activitypub/#actors.
+// Person is a type of Actor from https://www.w3.org/TR/activitypub/#actors.
 type Person struct {
 	Context []interface{} `json:"@context"`
 
