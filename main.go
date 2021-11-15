@@ -29,7 +29,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to MongoDB: %v", err)
 	}
-	defer client.Disconnect(ctx)
+	defer func() {
+		if err := client.Disconnect(ctx); err != nil {
+			log.Fatalf("failed to disconnect MongoDB client: %v", err)
+		}
+	}()
 	datastore, err := mongowrapper.NewDatastore(client)
 	if err != nil {
 		log.Fatalln(err)
