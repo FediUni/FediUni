@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/config"
 	"github.com/FediUni/FediUni/activitypub/mongowrapper"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"net/http"
 	"os"
 
@@ -23,7 +25,12 @@ func main() {
 	instanceConfig := config.New()
 
 	ctx := context.Background()
-	datastore, err := mongowrapper.NewDatastore(ctx, mongoURI)
+	client, err := mongo.Connect(ctx, options.Client(), options.Client().ApplyURI(mongoURI))
+	if err != nil {
+		log.Fatalf("failed to connect to MongoDB: %v", err)
+	}
+	defer client.Disconnect(ctx)
+	datastore, err := mongowrapper.NewDatastore(client)
 	if err != nil {
 		log.Fatalln(err)
 	}
