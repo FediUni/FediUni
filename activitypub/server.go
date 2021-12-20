@@ -2,8 +2,11 @@ package activitypub
 
 import (
 	"context"
+	"fmt"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/config"
+	"github.com/FediUni/FediUni/activitypub/user"
+	log "github.com/golang/glog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -12,7 +15,8 @@ import (
 
 type Datastore interface {
 	GetActor(context.Context, string) (*actor.Person, error)
-	CreateActor(context.Context, *actor.Person) error
+	CreatePerson(context.Context, *actor.Person) error
+	CreateUser(context.Context, *user.User) error
 }
 
 type Server struct {
@@ -31,6 +35,7 @@ func NewServer(config *config.Config, datastore Datastore) *Server {
 	s.Router.Get("/actor/{actorID}", s.getActor)
 	s.Router.Get("/actor/{actorID}/inbox", s.getActorInbox)
 	s.Router.Get("/actor/{actorID}/outbox", s.getActorOutbox)
+	s.Router.Post("/register", s.createUser)
 	return s
 }
 
@@ -41,6 +46,39 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Error(w, "actor lookup is unimplemented", http.StatusNotImplemented)
+}
+
+func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "failed to parse form", http.StatusBadRequest)
+	}
+	username := r.Form.Get("username")
+	displayName := r.Form.Get("displayName")
+	password := r.Form.Get("password")
+	newUser, err := user.NewUser(username, password)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusBadRequest)
+		log.Errorf("Failed to create user, got err=%v", err)
+		return
+	}
+	person, err := actor.NewPerson(username, displayName, s.Config.URL)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusBadRequest)
+		log.Errorf("Failed to create person, got err=%v", err)
+		return
+	}
+	if err := s.Datastore.CreateUser(r.Context(), newUser); err != nil {
+		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusBadRequest)
+		log.Errorf("Failed to create user in datastore, got err=%v", err)
+		return
+	}
+	if err := s.Datastore.CreatePerson(r.Context(), person); err != nil {
+		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusBadRequest)
+		log.Errorf("Failed to create actor in datastore, got err=%v", err)
+		return
+	}
+	w.WriteHeader(200)
+	w.Write([]byte("Successfully created user and person."))
 }
 
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
