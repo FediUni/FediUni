@@ -2,6 +2,7 @@ package activitypub
 
 import (
 	"fmt"
+	"github.com/FediUni/FediUni/activitypub/config"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -57,7 +58,7 @@ func TestCreateUser(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := NewServer(nil, nil)
+			s := NewServer(&config.Config{URL: "http://testserver.com"}, nil)
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			registrationURL := fmt.Sprintf("%s/register", server.URL)

@@ -8,6 +8,7 @@ type Person struct {
 
 	Type string `json:"type"`
 
+	// Id is a URL to the Person's profile page.
 	Id                string `json:"id"`
 	PreferredUsername string `json:"preferredUsername"`
 	Inbox             string `json:"inbox"`
@@ -17,7 +18,8 @@ type Person struct {
 	Followers string `json:"followers"`
 	Liked     string `json:"liked"`
 
-	Icon    string `json:"icon"`
+	Icon string `json:"icon"`
+	// Name is the display name of the Person.
 	Name    string `json:"name"`
 	Summary string `json:"summary"`
 
@@ -28,6 +30,7 @@ type Person struct {
 	} `json:"publicKey"`
 }
 
+// NewPerson initializes a new Actor of type Person.
 func NewPerson(username, displayName, baseURL string) (*Person, error) {
 	person := &Person{}
 	if username == "" {
@@ -38,9 +41,15 @@ func NewPerson(username, displayName, baseURL string) (*Person, error) {
 	if displayName != "" {
 		person.Name = displayName
 	}
+	person.Context = []interface{}{
+		"https://www.w3.org/ns/activitystreams",
+	}
+	person.Type = "Person"
+	person.Id = fmt.Sprintf("%s/actor/%s", baseURL, username)
 	person.Inbox = fmt.Sprintf("%s/actor/%s/inbox", baseURL, username)
 	person.Outbox = fmt.Sprintf("%s/actor/%s/outbox", baseURL, username)
-	person.Following = fmt.Sprintf("%s/actor/%s/followering", baseURL, username)
+	person.Following = fmt.Sprintf("%s/actor/%s/following", baseURL, username)
 	person.Followers = fmt.Sprintf("%s/actor/%s/followers", baseURL, username)
+	person.Liked = fmt.Sprintf("%s/actor/%s/liked", baseURL, username)
 	return person, nil
 }

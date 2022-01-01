@@ -15,7 +15,6 @@ import (
 
 type Datastore interface {
 	GetActor(context.Context, string) (*actor.Person, error)
-	CreatePerson(context.Context, *actor.Person) error
 	CreateUser(context.Context, *user.User) error
 }
 
@@ -52,29 +51,24 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "failed to parse form", http.StatusBadRequest)
 	}
-	username := r.Form.Get("username")
-	displayName := r.Form.Get("displayName")
-	password := r.Form.Get("password")
-	newUser, err := user.NewUser(username, password)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusBadRequest)
-		log.Errorf("Failed to create user, got err=%v", err)
-		return
-	}
+	username := r.FormValue("username")
+	displayName := r.FormValue("displayName")
+	password := r.FormValue("password")
 	person, err := actor.NewPerson(username, displayName, s.Config.URL)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusBadRequest)
 		log.Errorf("Failed to create person, got err=%v", err)
 		return
 	}
+	newUser, err := user.NewUser(username, password, person)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusBadRequest)
+		log.Errorf("Failed to create user, got err=%v", err)
+		return
+	}
 	if err := s.Datastore.CreateUser(r.Context(), newUser); err != nil {
 		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusBadRequest)
 		log.Errorf("Failed to create user in datastore, got err=%v", err)
-		return
-	}
-	if err := s.Datastore.CreatePerson(r.Context(), person); err != nil {
-		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusBadRequest)
-		log.Errorf("Failed to create actor in datastore, got err=%v", err)
 		return
 	}
 	w.WriteHeader(200)
