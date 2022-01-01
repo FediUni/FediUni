@@ -21,6 +21,7 @@ var (
 )
 
 func main() {
+	flag.Parse()
 	mongoURI := os.Getenv("MONGO_URI")
 	instanceConfig := config.New()
 

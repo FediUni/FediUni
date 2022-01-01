@@ -2,6 +2,7 @@ package activitypub
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/config"
@@ -41,10 +42,22 @@ func NewServer(config *config.Config, datastore Datastore) *Server {
 func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 	actorID := chi.URLParam(r, "actorID")
 	if actorID == "" {
-		w.WriteHeader(http.StatusNotFound)
+		http.Error(w, "actorID is unspecified", http.StatusBadRequest)
 		return
 	}
-	http.Error(w, "actor lookup is unimplemented", http.StatusNotImplemented)
+	actor, err := s.Datastore.GetActor(r.Context(), actorID)
+	if err != nil {
+		log.Errorf("failed to get actor with ID=%q: got err=%v", actorID, err)
+		http.Error(w, "failed to load actor", http.StatusNotFound)
+		return
+	}
+	marshalledActor, err := json.Marshal(actor)
+	if err != nil {
+		log.Errorf("failed to get actor with ID=%q: got err=%v", actorID, err)
+		http.Error(w, "failed to load actor", http.StatusInternalServerError)
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledActor)
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {

@@ -6,6 +6,7 @@ import (
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
 	log "github.com/golang/glog"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -22,8 +23,17 @@ func NewDatastore(client *mongo.Client) (*Datastore, error) {
 }
 
 // GetActor returns an instance of Person from Mongo.
-func (d *Datastore) GetActor(_ context.Context, id string) (*actor.Person, error) {
-	return nil, fmt.Errorf("failed to retrieve actor by ID=%s: unimplemented", id)
+func (d *Datastore) GetActor(ctx context.Context, username string) (*actor.Person, error) {
+	users := d.client.Database("FediUni").Collection("users")
+	filter := bson.D{{"username", username}}
+	user := &user.User{}
+	if err := users.FindOne(ctx, filter).Decode(&user); err != nil {
+		return nil, err
+	}
+	if user.Person == nil {
+		return nil, fmt.Errorf("unable to load user with username=%q", username)
+	}
+	return user.Person, nil
 }
 
 func (d *Datastore) CreateUser(ctx context.Context, user *user.User) error {
