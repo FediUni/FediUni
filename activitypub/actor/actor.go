@@ -2,6 +2,12 @@ package actor
 
 import "fmt"
 
+type PublicKey struct {
+	Id           string `json:"id"`
+	Owner        string `json:"owner"`
+	PublicKeyPem string `json:"publicKeyPem"`
+}
+
 // Person is a type of Actor from https://www.w3.org/TR/activitypub/#actors.
 type Person struct {
 	Context []interface{} `json:"@context"`
@@ -23,11 +29,7 @@ type Person struct {
 	Name    string `json:"name"`
 	Summary string `json:"summary"`
 
-	PublicKey struct {
-		Id           string `json:"id"`
-		Owner        string `json:"owner"`
-		PublicKeyPem string `json:"publicKeyPem"`
-	} `json:"publicKey"`
+	PublicKey *PublicKey
 }
 
 // NewPerson initializes a new Actor of type Person.
