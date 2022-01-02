@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"text/template"
+
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
 	log "github.com/golang/glog"
-	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -31,11 +33,28 @@ func NewServer(url string, datastore Datastore) *Server {
 	}
 	s.Router = chi.NewRouter()
 	s.Router.Use(middleware.Logger)
+	s.Router.Get("/", s.homepage)
 	s.Router.Get("/actor/{actorID}", s.getActor)
 	s.Router.Get("/actor/{actorID}/inbox", s.getActorInbox)
 	s.Router.Get("/actor/{actorID}/outbox", s.getActorOutbox)
 	s.Router.Post("/register", s.createUser)
 	return s
+}
+
+func (s *Server) homepage(w http.ResponseWriter, r *http.Request) {
+	homeTemplate := template.New("Home")
+	homeTemplate, err := homeTemplate.Parse(`<html>
+		<head>
+			<title>FediUni</title>
+		</head>
+		<body>
+			<p>This website is a WIP instance of the FediUni application. The source code for this application can be found <a href="https://github.com/FediUni/FediUni">here</a>.</p>
+		</body>
+	</html>`)
+	if err != nil {
+		log.Errorf("failed to parse home page template: got err=%v", err)
+	}
+	homeTemplate.Execute(w, "Home")
 }
 
 func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
