@@ -31,6 +31,12 @@ jobs:
             go install github.com/mattn/goveralls@latest
             go test -v -cover -race -coverprofile=./coverage.out ./...
             $(go env GOPATH | awk 'BEGIN{FS=":"} {print $1}')/bin/goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN
+  deploy:
+    docker:
+      - image: arvindr226/alpine-ssh
+    steps:
+      - checkout
+      - run: ssh -oStrictHostKeyChecking=no -v $USER@$IP "./deploy.sh"
 
 
 workflows:
@@ -39,3 +45,10 @@ workflows:
     jobs:
       - build:
           context: COVERALLS_TOKEN
+  deploydigitalocean:
+    jobs:
+      - deploy:
+          filters:
+              branches:
+                only:
+                  - main
