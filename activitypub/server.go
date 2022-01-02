@@ -53,6 +53,7 @@ func (s *Server) homepage(w http.ResponseWriter, r *http.Request) {
 	</html>`)
 	if err != nil {
 		log.Errorf("failed to parse home page template: got err=%v", err)
+		return
 	}
 	homeTemplate.Execute(w, "Home")
 }
