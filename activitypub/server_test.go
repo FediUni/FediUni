@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/actor"
-	"github.com/FediUni/FediUni/activitypub/config"
 	"github.com/FediUni/FediUni/activitypub/user"
 	"net/http"
 	"net/http/httptest"
@@ -39,10 +38,10 @@ func NewTestDatastore() *TestDatastore {
 }
 
 func (d *TestDatastore) GetActor(_ context.Context, username string) (*actor.Person, error) {
-	if actor := d.knownUsers[username]; actor != nil {
-		return d.knownUsers[username], nil
+	if a := d.knownUsers[username]; a != nil {
+		return a, nil
 	}
-	return nil, fmt.Errorf("Unable to find actor with username=%q", username)
+	return nil, fmt.Errorf("unable to find actor with username=%q", username)
 }
 
 func (d *TestDatastore) CreateUser(_ context.Context, _ *user.User) error {
@@ -50,7 +49,7 @@ func (d *TestDatastore) CreateUser(_ context.Context, _ *user.User) error {
 }
 
 func TestGetActor(t *testing.T) {
-	s := NewServer(nil, NewTestDatastore())
+	s := NewServer("https://testserver.com", NewTestDatastore())
 	server := httptest.NewServer(s.Router)
 	defer server.Close()
 	resp, err := http.Get(fmt.Sprintf("%s/actor/bendean", server.URL))
@@ -98,7 +97,7 @@ func TestCreateUser(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := NewServer(&config.Config{URL: "http://testserver.com"}, nil)
+			s := NewServer("https://testserver.com", nil)
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			registrationURL := fmt.Sprintf("%s/register", server.URL)
