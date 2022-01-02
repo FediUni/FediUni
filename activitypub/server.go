@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/actor"
-	"github.com/FediUni/FediUni/activitypub/config"
 	"github.com/FediUni/FediUni/activitypub/user"
 	log "github.com/golang/glog"
 	"net/http"
@@ -20,14 +19,14 @@ type Datastore interface {
 }
 
 type Server struct {
-	Config    *config.Config
+	URL       string
 	Router    *chi.Mux
 	Datastore Datastore
 }
 
-func NewServer(config *config.Config, datastore Datastore) *Server {
+func NewServer(url string, datastore Datastore) *Server {
 	s := &Server{
-		Config:    config,
+		URL:       url,
 		Datastore: datastore,
 	}
 	s.Router = chi.NewRouter()
@@ -45,19 +44,19 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "actorID is unspecified", http.StatusBadRequest)
 		return
 	}
-	actor, err := s.Datastore.GetActor(r.Context(), actorID)
+	person, err := s.Datastore.GetActor(r.Context(), actorID)
 	if err != nil {
 		log.Errorf("failed to get actor with ID=%q: got err=%v", actorID, err)
 		http.Error(w, "failed to load actor", http.StatusNotFound)
 		return
 	}
-	marshalledActor, err := json.Marshal(actor)
+	marshalledPerson, err := json.Marshal(person)
 	if err != nil {
 		log.Errorf("failed to get actor with ID=%q: got err=%v", actorID, err)
 		http.Error(w, "failed to load actor", http.StatusInternalServerError)
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledActor)
+	w.Write(marshalledPerson)
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +66,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	displayName := r.FormValue("displayName")
 	password := r.FormValue("password")
-	person, err := actor.NewPerson(username, displayName, s.Config.URL)
+	person, err := actor.NewPerson(username, displayName, s.URL)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusBadRequest)
 		log.Errorf("Failed to create person, got err=%v", err)

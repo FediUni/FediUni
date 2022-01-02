@@ -4,27 +4,37 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/config"
+	"github.com/FediUni/FediUni/activitypub"
 	"github.com/FediUni/FediUni/activitypub/mongowrapper"
+	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"net/http"
-	"os"
-
-	"github.com/FediUni/FediUni/activitypub"
 
 	log "github.com/golang/glog"
 )
 
 var (
-	port = flag.Int("port", 8080, "The port for the FediUni instance to listen on")
+	config = flag.String("config", "/run/secrets/", "The directory with YAML config containing MongoDB URI. This is in addition to the working directory.")
+	port   = flag.Int("port", 8080, "The port for the FediUni instance to listen on.")
 )
 
 func main() {
 	flag.Parse()
-	mongoURI := os.Getenv("MONGO_URI")
-	instanceConfig := config.New()
-
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	viper.AddConfigPath(*config)
+	if err := viper.ReadInConfig(); err != nil {
+		log.Fatalf("unable to load config: got err=%v", err)
+	}
+	mongoURI := viper.GetString("MONGO_URI")
+	if mongoURI == "" {
+		log.Fatalf("invalid configuration: MONGO_URI is unspecified")
+	}
+	instanceURL := viper.GetString("FEDIUNI_URL")
+	if instanceURL == "" {
+		log.Fatalf("invalid configuration: FEDIUNI_URL is unspecified")
+	}
 	ctx := context.Background()
 	client, err := mongo.Connect(ctx, options.Client(), options.Client().ApplyURI(mongoURI))
 	if err != nil {
@@ -40,8 +50,8 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	s := activitypub.NewServer(instanceConfig, datastore)
-	log.Infof("FediUni Instance: %s listening on port %d", instanceConfig.URL, *port)
+	s := activitypub.NewServer(instanceURL, datastore)
+	log.Infof("FediUni Instance: Listening on port %d", *port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), s.Router); err != nil {
 		log.Fatalln(err)
 	}
