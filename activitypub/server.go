@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/go-chi/httprate"
 	"net/http"
 	"text/template"
+	"time"
 
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
-	log "github.com/golang/glog"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	log "github.com/golang/glog"
 )
 
 type Datastore interface {
@@ -32,7 +33,11 @@ func NewServer(url string, datastore Datastore) *Server {
 		Datastore: datastore,
 	}
 	s.Router = chi.NewRouter()
+
 	s.Router.Use(middleware.Logger)
+	s.Router.Use(middleware.Timeout(60 * time.Second))
+	s.Router.Use(httprate.LimitAll(100, time.Minute*1))
+
 	s.Router.Get("/", s.homepage)
 	s.Router.Get("/actor/{actorID}", s.getActor)
 	s.Router.Get("/actor/{actorID}/inbox", s.getActorInbox)
