@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"text/template"
 	"time"
 
@@ -160,12 +161,19 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
 	resource := r.URL.Query().Get("resource")
 	var username string
-	_, err := fmt.Sscanf(resource, "acct:%s@"+s.URL.Host, &username)
+	// Find alternative to this parsing (other than Regex
+	splitString := strings.Split(resource, "@"+s.URL.Host)
+	if len(splitString) == 0 {
+		http.Error(w, fmt.Sprintf("invalid resource string"), http.StatusBadRequest)
+		return
+	}
+	_, err := fmt.Sscanf(splitString[0], "acct:%s", &username)
 	if err != nil {
+		log.Errorf("failed to parse username=%q from resource=%q: got err=%v", username, resource, err)
 		http.Error(w, fmt.Sprintf("failed to parse username"), http.StatusBadRequest)
 		return
 	}
-	actor, err := s.Datastore.GetActor(r.Context(), "resource")
+	actor, err := s.Datastore.GetActor(r.Context(), username)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("unable to find actor"), http.StatusNotFound)
 		return
