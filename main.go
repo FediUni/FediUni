@@ -4,16 +4,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/actor"
 	"net/http"
 
 	"github.com/FediUni/FediUni/activitypub"
+	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/mongowrapper"
+	log "github.com/golang/glog"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-
-	log "github.com/golang/glog"
 )
 
 var (
@@ -53,7 +52,10 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	s := activitypub.NewServer(instanceURL, *keys, datastore, actor.NewRSAKeyGenerator())
+	s, err := activitypub.NewServer(instanceURL, *keys, datastore, actor.NewRSAKeyGenerator())
+	if err != nil {
+		log.Fatalf("failed to create service: got err=%v", err)
+	}
 	log.Infof("FediUni Instance: Listening on port %d", *port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), s.Router); err != nil {
 		log.Fatalln(err)
