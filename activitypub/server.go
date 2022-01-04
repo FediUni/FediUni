@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-chi/httprate"
 	"net/http"
 	"text/template"
 	"time"
+
+	"github.com/go-chi/httprate"
 
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
@@ -23,13 +24,15 @@ type Datastore interface {
 
 type Server struct {
 	URL       string
+	Keys      string
 	Router    *chi.Mux
 	Datastore Datastore
 }
 
-func NewServer(url string, datastore Datastore) *Server {
+func NewServer(url, keys string, datastore Datastore) *Server {
 	s := &Server{
 		URL:       url,
+		Keys:      keys,
 		Datastore: datastore,
 	}
 	s.Router = chi.NewRouter()
@@ -91,7 +94,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	displayName := r.FormValue("displayName")
 	password := r.FormValue("password")
-	person, err := actor.NewPerson(username, displayName, s.URL)
+	person, err := actor.NewPerson(username, displayName, s.URL, s.Keys)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusBadRequest)
 		log.Errorf("Failed to create person, got err=%v", err)

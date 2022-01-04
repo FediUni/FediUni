@@ -4,18 +4,20 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
+
 	"github.com/FediUni/FediUni/activitypub"
 	"github.com/FediUni/FediUni/activitypub/mongowrapper"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"net/http"
 
 	log "github.com/golang/glog"
 )
 
 var (
 	config = flag.String("config", "/run/secrets/", "The directory with YAML config containing MongoDB URI. This is in addition to the working directory.")
+	keys   = flag.String("key_directory", "/keys", "The directory in which to store user private keys.")
 	port   = flag.Int("port", 8080, "The port for the FediUni instance to listen on.")
 )
 
@@ -50,7 +52,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	s := activitypub.NewServer(instanceURL, datastore)
+	s := activitypub.NewServer(instanceURL, *keys, datastore)
 	log.Infof("FediUni Instance: Listening on port %d", *port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), s.Router); err != nil {
 		log.Fatalln(err)
