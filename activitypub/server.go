@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-chi/httprate"
 	"net/http"
+	"path/filepath"
 	"text/template"
 	"time"
+
+	"github.com/go-chi/httprate"
 
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
@@ -22,15 +24,19 @@ type Datastore interface {
 }
 
 type Server struct {
-	URL       string
-	Router    *chi.Mux
-	Datastore Datastore
+	URL          string
+	Keys         string
+	Router       *chi.Mux
+	Datastore    Datastore
+	KeyGenerator actor.KeyGenerator
 }
 
-func NewServer(url string, datastore Datastore) *Server {
+func NewServer(url, keys string, datastore Datastore, keyGenerator actor.KeyGenerator) *Server {
 	s := &Server{
-		URL:       url,
-		Datastore: datastore,
+		URL:          url,
+		Keys:         keys,
+		Datastore:    datastore,
+		KeyGenerator: keyGenerator,
 	}
 	s.Router = chi.NewRouter()
 
@@ -91,10 +97,15 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	displayName := r.FormValue("displayName")
 	password := r.FormValue("password")
-	person, err := actor.NewPerson(username, displayName, s.URL)
+	person, err := actor.NewPerson(username, displayName, s.URL, s.KeyGenerator)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusBadRequest)
 		log.Errorf("Failed to create person, got err=%v", err)
+		return
+	}
+	if err := s.KeyGenerator.WritePrivateKey(filepath.Join(s.Keys, fmt.Sprintf("%s_private.pem", username))); err != nil {
+		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusInternalServerError)
+		log.Errorf("Failed to write private key, got err=%v", err)
 		return
 	}
 	newUser, err := user.NewUser(username, password, person)

@@ -48,8 +48,18 @@ func (d *TestDatastore) CreateUser(_ context.Context, _ *user.User) error {
 	return fmt.Errorf("CreateUser() is Unimplemented")
 }
 
+type TestKeyGenerator struct{}
+
+func (g *TestKeyGenerator) GenerateKeyPair() (string, string, error) {
+	return "testprivatekey", "testpublickey", nil
+}
+
+func (g *TestKeyGenerator) WritePrivateKey(string) error {
+	return nil
+}
+
 func TestGetActor(t *testing.T) {
-	s := NewServer("https://testserver.com", NewTestDatastore())
+	s := NewServer("https://testserver.com", "", NewTestDatastore(), nil)
 	server := httptest.NewServer(s.Router)
 	defer server.Close()
 	resp, err := http.Get(fmt.Sprintf("%s/actor/bendean", server.URL))
@@ -97,7 +107,7 @@ func TestCreateUser(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := NewServer("https://testserver.com", nil)
+			s := NewServer("https://testserver.com", "", nil, &TestKeyGenerator{})
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			registrationURL := fmt.Sprintf("%s/register", server.URL)
