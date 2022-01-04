@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"text/template"
 	"time"
-
-	"github.com/go-chi/httprate"
 
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
 	log "github.com/golang/glog"
 )
 
@@ -24,14 +24,29 @@ type Datastore interface {
 }
 
 type Server struct {
-	URL          string
+	URL          *url.URL
 	Keys         string
 	Router       *chi.Mux
 	Datastore    Datastore
 	KeyGenerator actor.KeyGenerator
 }
 
-func NewServer(url, keys string, datastore Datastore, keyGenerator actor.KeyGenerator) *Server {
+type WebfingerResponse struct {
+	Subject string          `json:"subject"`
+	Links   []WebfingerLink `json:"links"`
+}
+
+type WebfingerLink struct {
+	Rel  string `json:"rel"`
+	Type string `json:"type"`
+	Href string `json:"href"`
+}
+
+func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor.KeyGenerator) (*Server, error) {
+	url, err := url.Parse(instanceURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse instanceURL=%q: got err=%v", instanceURL, err)
+	}
 	s := &Server{
 		URL:          url,
 		Keys:         keys,
@@ -45,11 +60,12 @@ func NewServer(url, keys string, datastore Datastore, keyGenerator actor.KeyGene
 	s.Router.Use(httprate.LimitAll(100, time.Minute*1))
 
 	s.Router.Get("/", s.homepage)
+	s.Router.Get("/.well-known/webfinger", s.webfinger)
 	s.Router.Get("/actor/{actorID}", s.getActor)
 	s.Router.Get("/actor/{actorID}/inbox", s.getActorInbox)
 	s.Router.Get("/actor/{actorID}/outbox", s.getActorOutbox)
 	s.Router.Post("/register", s.createUser)
-	return s
+	return s, nil
 }
 
 func (s *Server) homepage(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +113,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	displayName := r.FormValue("displayName")
 	password := r.FormValue("password")
-	person, err := actor.NewPerson(username, displayName, s.URL, s.KeyGenerator)
+	person, err := actor.NewPerson(username, displayName, s.URL.String(), s.KeyGenerator)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusBadRequest)
 		log.Errorf("Failed to create person, got err=%v", err)
@@ -139,4 +155,36 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Error(w, "actor outbox lookup is unimplemented", http.StatusNotImplemented)
+}
+
+func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
+	resource := r.URL.Query().Get("resource")
+	var username string
+	_, err := fmt.Sscanf(resource, "acct:%s@"+s.URL.Host, &username)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse username"), http.StatusBadRequest)
+		return
+	}
+	actor, err := s.Datastore.GetActor(r.Context(), "resource")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("unable to find actor"), http.StatusNotFound)
+		return
+	}
+	res := &WebfingerResponse{
+		Subject: resource,
+		Links: []WebfingerLink{
+			{
+				Rel:  "self",
+				Type: "application/activity+json",
+				Href: actor.Id,
+			},
+		},
+	}
+	response, err := json.Marshal(res)
+	if err != nil {
+		log.Errorf("failed to get actor with username=%q: got err=%v", username, err)
+		http.Error(w, "failed to load actor", http.StatusInternalServerError)
+	}
+	w.WriteHeader(200)
+	w.Write(response)
 }

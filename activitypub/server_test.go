@@ -59,7 +59,7 @@ func (g *TestKeyGenerator) WritePrivateKey(string) error {
 }
 
 func TestGetActor(t *testing.T) {
-	s := NewServer("https://testserver.com", "", NewTestDatastore(), nil)
+	s, _ := NewServer("https://testserver.com", "", NewTestDatastore(), nil)
 	server := httptest.NewServer(s.Router)
 	defer server.Close()
 	resp, err := http.Get(fmt.Sprintf("%s/actor/bendean", server.URL))
@@ -107,7 +107,7 @@ func TestCreateUser(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := NewServer("https://testserver.com", "", nil, &TestKeyGenerator{})
+			s, _ := NewServer("https://testserver.com", "", nil, &TestKeyGenerator{})
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			registrationURL := fmt.Sprintf("%s/register", server.URL)
