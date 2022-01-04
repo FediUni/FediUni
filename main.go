@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/FediUni/FediUni/activitypub/actor"
 	"net/http"
 
 	"github.com/FediUni/FediUni/activitypub"
@@ -52,7 +53,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	s := activitypub.NewServer(instanceURL, *keys, datastore)
+	s := activitypub.NewServer(instanceURL, *keys, datastore, actor.NewRSAKeyGenerator())
 	log.Infof("FediUni Instance: Listening on port %d", *port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), s.Router); err != nil {
 		log.Fatalln(err)
