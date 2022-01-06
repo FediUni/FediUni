@@ -127,7 +127,7 @@ func TestCreateUser(t *testing.T) {
 	}
 }
 
-func TestWebfinger(t *testing.T) {
+func TestWebfingerKnownAccount(t *testing.T) {
 	tests := []struct {
 		name         string
 		resource     string
@@ -169,6 +169,47 @@ func TestWebfinger(t *testing.T) {
 			}
 			if d := cmp.Diff(test.wantResponse, gotResponse); d != "" {
 				t.Errorf("%s: returned an unexpected diff (-want +got): %s", webfingerURL, d)
+			}
+		})
+	}
+}
+
+func TestWebfinger(t *testing.T) {
+	tests := []struct {
+		name          string
+		resource      string
+		wantErrorCode int
+	}{
+		{
+			name:          "Test load account not belonging to instance",
+			resource:      "acct:fakeacccount@testfediuni.xyz",
+			wantErrorCode: http.StatusNotFound,
+		},
+		{
+			name:          "Test bad resource syntax (missing \"acct:\")",
+			resource:      "fakeacccount@testfediuni.xyz",
+			wantErrorCode: http.StatusBadRequest,
+		},
+		{
+			name:          "Test bad resource syntax (resource parameter empty)",
+			resource:      "",
+			wantErrorCode: http.StatusBadRequest,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, _ := NewServer("https://testfediuni.xyz", "", NewTestDatastore(), nil)
+			server := httptest.NewServer(s.Router)
+			defer server.Close()
+			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
+			resp, err := http.Get(fmt.Sprintf("%s?resource=%s", webfingerURL, test.resource))
+			if err != nil {
+				t.Errorf("%s: returned an unexpected err: got=%v want=%v", webfingerURL, err, nil)
+			}
+			defer resp.Body.Close()
+			gotStatus := resp.StatusCode
+			if gotStatus != test.wantErrorCode {
+				t.Errorf("%s: returned an unexpected status: got %v want %v", webfingerURL, gotStatus, test.wantErrorCode)
 			}
 		})
 	}
