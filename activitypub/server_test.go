@@ -2,9 +2,12 @@ package activitypub
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
+	"github.com/google/go-cmp/cmp"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -119,6 +122,53 @@ func TestCreateUser(t *testing.T) {
 			gotStatus := resp.StatusCode
 			if gotStatus != test.wantStatus {
 				t.Errorf("%s: returned an unexpected status: got %v want %v", registrationURL, gotStatus, test.wantStatus)
+			}
+		})
+	}
+}
+
+func TestWebfinger(t *testing.T) {
+	tests := []struct {
+		name         string
+		resource     string
+		wantResponse *WebfingerResponse
+	}{
+		{
+			name:     "Test load account belonging to instance",
+			resource: "acct:brandonstark@testfediuni.xyz",
+			wantResponse: &WebfingerResponse{
+				Subject: "acct:brandonstark@testfediuni.xyz",
+				Links: []WebfingerLink{
+					{
+						Rel:  "self",
+						Type: "application/activity+json",
+						Href: "https://testfediuni.xyz/actor/brandonstark",
+					},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, _ := NewServer("https://testfediuni.xyz", "", NewTestDatastore(), nil)
+			server := httptest.NewServer(s.Router)
+			defer server.Close()
+			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
+			resp, err := http.Get(fmt.Sprintf("%s?resource=%s", webfingerURL, test.resource))
+			if err != nil {
+				t.Errorf("%s: returned an unexpected err: got=%v want=%v", webfingerURL, err, nil)
+			}
+			defer resp.Body.Close()
+			body, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				t.Errorf("%s: Failed to read response returned: got err=%v", webfingerURL, err)
+			}
+			var gotResponse *WebfingerResponse
+			if err := json.Unmarshal(body, &gotResponse); err != nil {
+				t.Errorf("%s: Failed to unmarshal response: got err=%v", webfingerURL, err)
+			}
+			if d := cmp.Diff(test.wantResponse, gotResponse); d != "" {
+				t.Errorf("%s: returned an unexpected diff (-want +got): %s", webfingerURL, d)
 			}
 		})
 	}

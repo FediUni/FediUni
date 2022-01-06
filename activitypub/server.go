@@ -161,7 +161,7 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
 	resource := r.URL.Query().Get("resource")
 	var username string
-	// Find alternative to this parsing (other than Regex
+	// Find alternative to this parsing (other than Regex)
 	splitString := strings.Split(resource, "@"+s.URL.Host)
 	if len(splitString) == 0 {
 		http.Error(w, fmt.Sprintf("invalid resource string"), http.StatusBadRequest)
