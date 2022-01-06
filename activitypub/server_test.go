@@ -15,27 +15,37 @@ import (
 )
 
 type TestDatastore struct {
-	knownUsers map[string]*actor.Person
+	knownUsers  map[string]*actor.Person
+	privateKeys map[string]string
 }
 
-func NewTestDatastore() *TestDatastore {
+func NewTestDatastore(url string) *TestDatastore {
+	keyGenerator := actor.NewRSAKeyGenerator()
+	privateKey, publicKey, _ := keyGenerator.GenerateKeyPair()
 	return &TestDatastore{
 		knownUsers: map[string]*actor.Person{
 			"brandonstark": {
 				Context:           nil,
 				Type:              "",
-				Id:                "https://testfediuni.xyz/actor/brandonstark",
+				Id:                fmt.Sprintf("%s/actor/brandonstark", url),
 				PreferredUsername: "brandonstark",
-				Inbox:             "https://testfediuni.xyz/actor/brandonstark/inbox",
-				Outbox:            "https://testfediuni.xyz/actor/brandonstark/outbox",
-				Following:         "https://testfediuni.xyz/actor/brandonstark/following",
-				Followers:         "https://testfediuni.xyz/actor/brandonstark/followers",
-				Liked:             "https://testfediuni.xyz/actor/brandonstark/liked",
+				Inbox:             fmt.Sprintf("%s/actor/brandonstark/inbox", url),
+				Outbox:            fmt.Sprintf("%s/actor/brandonstark/outbox", url),
+				Following:         fmt.Sprintf("%s/actor/brandonstark/following", url),
+				Followers:         fmt.Sprintf("%s/actor/brandonstark/followers", url),
+				Liked:             fmt.Sprintf("%s/actor/brandonstark/liked", url),
 				Icon:              "",
 				Name:              "Brandon Stark",
 				Summary:           "",
-				PublicKey:         &actor.PublicKey{},
+				PublicKey: &actor.PublicKey{
+					Id:           fmt.Sprintf("%s/actor/brandonstark#public-key", url),
+					Owner:        fmt.Sprintf("%s/actor/brandonstark", url),
+					PublicKeyPem: publicKey,
+				},
 			},
+		},
+		privateKeys: map[string]string{
+			"brandonstark": privateKey,
 		},
 	}
 }
@@ -62,7 +72,7 @@ func (g *TestKeyGenerator) WritePrivateKey(string) error {
 }
 
 func TestGetActor(t *testing.T) {
-	s, _ := NewServer("https://testserver.com", "", NewTestDatastore(), nil)
+	s, _ := NewServer("https://testserver.com", "", NewTestDatastore("https://testserver.com"), nil)
 	server := httptest.NewServer(s.Router)
 	defer server.Close()
 	resp, err := http.Get(fmt.Sprintf("%s/actor/bendean", server.URL))
@@ -150,7 +160,7 @@ func TestWebfingerKnownAccount(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := NewServer("https://testfediuni.xyz", "", NewTestDatastore(), nil)
+			s, _ := NewServer("https://testfediuni.xyz", "", NewTestDatastore("https://testfediuni.xyz"), nil)
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -198,7 +208,7 @@ func TestWebfinger(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := NewServer("https://testfediuni.xyz", "", NewTestDatastore(), nil)
+			s, _ := NewServer("https://testfediuni.xyz", "", NewTestDatastore("https://testserver.com"), nil)
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
