@@ -42,8 +42,15 @@ func Validate(next http.Handler) http.Handler {
 			http.Error(w, "keyId not provided", http.StatusBadRequest)
 			return
 		}
-		log.Infof("Retrieving public key from url=%q", signatureHeader["keyId"])
-		res, err := http.Get(signatureHeader["keyId"])
+		log.Infof("Retrieving public key from url=%q", keyID)
+		req, err := http.NewRequest(http.MethodGet, keyID, nil)
+		if err != nil {
+			log.Errorf("failed to create new request: got err=%v", err)
+			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
+			return
+		}
+		req.Header.Set("Accept", "application/activity+json")
+		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			log.Errorf("failed to retrieve public key, got err=%v", err)
 			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
