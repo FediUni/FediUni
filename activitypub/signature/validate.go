@@ -105,8 +105,8 @@ func processSignatureHeader(header http.Header) (map[string]string, error) {
 	httpSignature := header.Get("Signature")
 	signature := map[string]string{}
 	signaturePairs := strings.Split(httpSignature, ",")
-	if len(signaturePairs) != 3 {
-		return nil, fmt.Errorf("failed to process signature: unexpected input format, got %d pairs, want 3 pairs", len(signaturePairs))
+	if len(signaturePairs) < 3 {
+		return nil, fmt.Errorf("failed to process signature: unexpected input format, got %d pairs", len(signaturePairs))
 	}
 	for _, rawPair := range signaturePairs {
 		splitPair := strings.SplitN(rawPair, "=", 2)

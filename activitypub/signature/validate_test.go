@@ -40,20 +40,6 @@ func TestProcessSignatureHeader(t *testing.T) {
 			},
 		},
 		{
-			name: "Test too many pairs in Signature header",
-			header: http.Header{
-				"Signature": []string{`keyId="https://testservice.com/actor#main-key",headers="(request-target) host date",signature="thisisarandomsignature",randomkey="randomval"`},
-			},
-			wantErr: true,
-		},
-		{
-			name: "Test triple instead of pair in Signature header",
-			header: http.Header{
-				"Signature": []string{`keyId="https://testservice.com/actor#main-key"="fake",headers="(request-target) host date",signature="thisisarandomsignature",randomkey="randomval"`},
-			},
-			wantErr: true,
-		},
-		{
 			name:    "Test empty Signature header",
 			header:  http.Header{},
 			wantErr: true,
