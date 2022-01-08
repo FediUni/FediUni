@@ -55,6 +55,7 @@ func Validate(next http.Handler) http.Handler {
 			return
 		}
 		person := &actor.Person{}
+		log.Infoln(marshalledActor)
 		if err := json.Unmarshal(marshalledActor, &person); err != nil {
 			log.Errorf("failed to unmarshal person, got err=%v", err)
 			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
