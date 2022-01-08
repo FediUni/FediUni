@@ -2,15 +2,9 @@ package activitypub
 
 import (
 	"context"
-	"crypto"
-	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
-	"io/ioutil"
+	"github.com/FediUni/FediUni/activitypub/signature"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -71,7 +65,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	s.Router.Get("/.well-known/webfinger", s.webfinger)
 	s.Router.Get("/actor/{actorID}", s.getActor)
 	s.Router.Get("/actor/{actorID}/inbox", s.getActorInbox)
-	s.Router.With(validateSignature).Post("/actor/{actorID}/inbox", s.receiveToActorInbox)
+	s.Router.With(signature.Validate).Post("/actor/{actorID}/inbox", s.receiveToActorInbox)
 	s.Router.Get("/actor/{actorID}/outbox", s.getActorOutbox)
 	s.Router.Post("/register", s.createUser)
 	return s, nil
@@ -208,61 +202,4 @@ func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(200)
 	w.Write(response)
-}
-
-// validateSignature validates the "Signature" header using the public key.
-func validateSignature(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		httpSignature := r.Header.Get("Signature")
-		var keyID, headers, encodedSignature string
-		if _, err := fmt.Sscanf(httpSignature, "keyId=%q,headers=%q,signature=%q\n", &keyID, &headers, &encodedSignature); err != nil {
-			log.Errorf("failed to parse signature, got err=%v", err)
-			http.Error(w, "failed to parse signature", http.StatusBadRequest)
-			return
-		}
-		signature, err := base64.StdEncoding.DecodeString(encodedSignature)
-		if err != nil {
-			log.Errorf("failed to decode signature, got err=%v", err)
-			http.Error(w, "failed to parse signature", http.StatusBadRequest)
-			return
-		}
-		res, err := http.Get(keyID)
-		if err != nil {
-			log.Errorf("failed to retrieve public key got err=%v", err)
-			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
-			return
-		}
-		defer res.Body.Close()
-		marshalledActor, err := ioutil.ReadAll(res.Body)
-		actor := &actor.Person{}
-		if err := json.Unmarshal(marshalledActor, &actor); err != nil {
-			log.Errorf("failed to unmarshal actor, got err=%v", err)
-			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
-			return
-		}
-		toCompare := ""
-		for _, header := range strings.Split(headers, " ") {
-			toCompare += fmt.Sprintf("%s: %s\n", header, r.Header.Get(header))
-			fmt.Println(header)
-		}
-		block, _ := pem.Decode([]byte(actor.PublicKey.PublicKeyPem))
-		if block == nil {
-			log.Errorf("failed to decode public key from pem")
-			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
-			return
-		}
-		publicKey, err := x509.ParsePKCS1PublicKey(block.Bytes)
-		if err != nil {
-			log.Errorf("failed to parse public key from block")
-			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
-			return
-		}
-		hashed := sha256.Sum256([]byte(toCompare))
-		if err := rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hashed[:], signature); err != nil {
-			log.Errorf("failed to verify the provided signature, got err=%v", err)
-			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
