@@ -99,8 +99,8 @@ func TestValidate(t *testing.T) {
 			headers := []string{"(request-target)"}
 			pairs := []string{"(request-target): post /actor/brandonstark/inbox"}
 			for name, value := range request.Header {
-				headers = append(headers, name)
-				pairs = append(pairs, fmt.Sprintf("%s: %s", name, value[0]))
+				headers = append(headers, strings.ToLower(name))
+				pairs = append(pairs, fmt.Sprintf("%s: %s", strings.ToLower(name), value[0]))
 			}
 			toSign := strings.Join(pairs, "\n")
 			hash := sha256.Sum256([]byte(toSign))
