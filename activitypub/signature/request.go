@@ -29,10 +29,11 @@ func SignRequest(r *http.Request, url *url.URL, keyID string, privateKey string)
 	headers := []string{"(request-target)"}
 	pairs := []string{fmt.Sprintf("(request-target): %s %s", strings.ToLower(r.Method), r.URL.Path)}
 	for name, value := range r.Header {
-		headers = append(headers, name)
-		pairs = append(pairs, fmt.Sprintf("%s: %s", name, value[0]))
+		headers = append(headers, strings.ToLower(name))
+		pairs = append(pairs, fmt.Sprintf("%s: %s", strings.ToLower(name), value[0]))
 	}
 	toSign := strings.Join(pairs, "\n")
+	fmt.Println(toSign)
 	hash := sha256.Sum256([]byte(toSign))
 	block, _ := pem.Decode([]byte(privateKey))
 	if block == nil {

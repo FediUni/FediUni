@@ -82,7 +82,7 @@ func Validate(next http.Handler) http.Handler {
 				pair = fmt.Sprintf("%s: %s %s", header, strings.ToLower(r.Method), r.URL.Path)
 			// Host header is removed from incoming requests and promoted to a
 			// field (See: https://pkg.go.dev/net/http#Request).
-			case "Host":
+			case "host":
 				pair = fmt.Sprintf("%s: %s", header, r.Host)
 			default:
 				pair = fmt.Sprintf("%s: %s", header, r.Header.Get(header))
@@ -99,6 +99,7 @@ func Validate(next http.Handler) http.Handler {
 		}
 		log.Infoln("Public Key successfully parsed.")
 		hashed := sha256.Sum256([]byte(toCompare))
+		fmt.Println(toCompare)
 		log.Infoln("Verifying Signature...")
 		if err := rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hashed[:], signature); err != nil {
 			log.Errorf("failed to verify the provided signature, got err=%v", err)
