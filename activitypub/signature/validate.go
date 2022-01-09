@@ -75,17 +75,17 @@ func Validate(next http.Handler) http.Handler {
 		pairs := []string{}
 		for _, header := range strings.Split(signatureHeader["headers"], " ") {
 			var pair string
-			switch header {
+			switch headerName := strings.ToLower(header); headerName {
 			// (request-target) is a fake header that must be constructed using
 			// HTTP method and the path.
 			case "(request-target)":
-				pair = fmt.Sprintf("%s: %s %s", header, strings.ToLower(r.Method), r.URL.Path)
+				pair = fmt.Sprintf("%s: %s %s", headerName, strings.ToLower(r.Method), r.URL.Path)
 			// Host header is removed from incoming requests and promoted to a
 			// field (See: https://pkg.go.dev/net/http#Request).
 			case "host":
-				pair = fmt.Sprintf("%s: %s", header, r.Host)
+				pair = fmt.Sprintf("%s: %s", headerName, r.Host)
 			default:
-				pair = fmt.Sprintf("%s: %s", header, r.Header.Get(header))
+				pair = fmt.Sprintf("%s: %s", headerName, r.Header.Get(header))
 			}
 			pairs = append(pairs, pair)
 		}
@@ -99,7 +99,6 @@ func Validate(next http.Handler) http.Handler {
 		}
 		log.Infoln("Public Key successfully parsed.")
 		hashed := sha256.Sum256([]byte(toCompare))
-		fmt.Println(toCompare)
 		log.Infoln("Verifying Signature...")
 		if err := rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hashed[:], signature); err != nil {
 			log.Errorf("failed to verify the provided signature, got err=%v", err)
