@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	log "github.com/golang/glog"
@@ -86,13 +85,7 @@ func Validate(next http.Handler) http.Handler {
 			pairs = append(pairs, pair)
 		}
 		toCompare := strings.Join(pairs, "\n")
-		block, _ := pem.Decode([]byte(person.PublicKey.PublicKeyPem))
-		if block == nil {
-			log.Errorf("failed to decode public key from pem")
-			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
-			return
-		}
-		publicKey, err := parsePublicKeyFromPEMBlock(block.Bytes)
+		publicKey, err := parsePublicKeyFromPEMBlock(person.PublicKey.PublicKeyPem)
 		if err != nil {
 			log.Errorf("failed to parse public key from block, got err=%v", err)
 			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
