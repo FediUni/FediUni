@@ -64,16 +64,18 @@ func TestProcessSignatureHeader(t *testing.T) {
 func TestValidate(t *testing.T) {
 	tests := []struct {
 		name           string
+		keyGenerator   *actor.PKCS1KeyGenerator
 		wantStatusCode int
 	}{
 		{
-			name:           "Test validate request with valid signature",
+			name:           "Test validate request with valid signature (PKCS1)",
+			keyGenerator:   actor.NewPKCS1KeyGenerator(),
 			wantStatusCode: 200,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			privateKey, publicKey, err := actor.NewRSAKeyGenerator().GenerateKeyPair()
+			privateKey, publicKey, err := test.keyGenerator.GenerateKeyPair()
 			if err != nil {
 				t.Errorf("Failed to generate private key: got err=%v", err)
 			}

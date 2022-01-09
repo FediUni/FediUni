@@ -40,13 +40,13 @@ type Person struct {
 	PublicKey *PublicKey
 }
 
-type RSAKeyGenerator struct {
+type PKCS1KeyGenerator struct {
 	privateKey *bytes.Buffer
 	publicKey  *bytes.Buffer
 }
 
-func NewRSAKeyGenerator() *RSAKeyGenerator {
-	return &RSAKeyGenerator{
+func NewPKCS1KeyGenerator() *PKCS1KeyGenerator {
+	return &PKCS1KeyGenerator{
 		privateKey: &bytes.Buffer{},
 		publicKey:  &bytes.Buffer{},
 	}
@@ -93,7 +93,7 @@ func NewPerson(username, displayName, baseURL string, keyGenerator KeyGenerator)
 	return person, nil
 }
 
-func (g *RSAKeyGenerator) GenerateKeyPair() (string, string, error) {
+func (g *PKCS1KeyGenerator) GenerateKeyPair() (string, string, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate private key: got err=%v", err)
@@ -113,7 +113,7 @@ func (g *RSAKeyGenerator) GenerateKeyPair() (string, string, error) {
 	return g.privateKey.String(), g.publicKey.String(), nil
 }
 
-func (g *RSAKeyGenerator) WritePrivateKey(privateKeyPath string) error {
+func (g *PKCS1KeyGenerator) WritePrivateKey(privateKeyPath string) error {
 	privatePem, err := os.Create(privateKeyPath)
 	if err != nil {
 		return fmt.Errorf("failed to create private pem file: got err=%v", err)

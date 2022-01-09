@@ -20,7 +20,7 @@ type TestDatastore struct {
 }
 
 func NewTestDatastore(url string) *TestDatastore {
-	keyGenerator := actor.NewRSAKeyGenerator()
+	keyGenerator := actor.NewPKCS1KeyGenerator()
 	privateKey, publicKey, _ := keyGenerator.GenerateKeyPair()
 	return &TestDatastore{
 		knownUsers: map[string]*actor.Person{

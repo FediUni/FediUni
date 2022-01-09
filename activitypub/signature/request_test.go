@@ -23,7 +23,7 @@ func TestSignRequest(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			privateKey, publicKey, err := actor.NewRSAKeyGenerator().GenerateKeyPair()
+			privateKey, publicKey, err := actor.NewPKCS1KeyGenerator().GenerateKeyPair()
 			if err != nil {
 				t.Errorf("Failed to generate private key: got err=%v", err)
 			}
