@@ -62,9 +62,14 @@ func Validate(next http.Handler) http.Handler {
 			return
 		}
 		person := &actor.Person{}
-		if err := json.Unmarshal(marshalledActor, &person); err != nil {
+		if err := json.Unmarshal(marshalledActor, &person); err != nil || person == nil {
 			log.Errorf("failed to unmarshal person, got err=%v", err)
 			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
+			return
+		}
+		if person.PublicKey == nil {
+			log.Errorf("actor does not contain a public key")
+			http.Error(w, "failed to retrieve a public key", http.StatusInternalServerError)
 			return
 		}
 		pairs := []string{}
@@ -85,13 +90,16 @@ func Validate(next http.Handler) http.Handler {
 			pairs = append(pairs, pair)
 		}
 		toCompare := strings.Join(pairs, "\n")
+		log.Infoln("Parsing Public Key from PEM block...")
 		publicKey, err := parsePublicKeyFromPEMBlock(person.PublicKey.PublicKeyPem)
 		if err != nil {
 			log.Errorf("failed to parse public key from block, got err=%v", err)
 			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
 			return
 		}
+		log.Infoln("Public Key successfully parsed.")
 		hashed := sha256.Sum256([]byte(toCompare))
+		log.Infoln("Verifying Signature...")
 		if err := rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hashed[:], signature); err != nil {
 			log.Errorf("failed to verify the provided signature, got err=%v", err)
 			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
