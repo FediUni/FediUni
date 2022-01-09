@@ -4,7 +4,6 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -93,9 +92,9 @@ func Validate(next http.Handler) http.Handler {
 			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
 			return
 		}
-		publicKey, err := x509.ParsePKCS1PublicKey(block.Bytes)
+		publicKey, err := parsePublicKeyFromPEMBlock(block.Bytes)
 		if err != nil {
-			log.Errorf("failed to parse public key from block")
+			log.Errorf("failed to parse public key from block, got err=%v", err)
 			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
 			return
 		}
