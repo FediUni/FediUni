@@ -23,15 +23,16 @@ func Signature(next http.Handler) http.Handler {
 			http.Error(w, "failed to parse validation", http.StatusBadRequest)
 			return
 		}
-		if signatureHeader["validation"] == "" {
-			log.Errorf("validation not provided")
-			http.Error(w, "validation not provided", http.StatusBadRequest)
+		encodedSignature := signatureHeader["signature"]
+		if encodedSignature == "" {
+			log.Errorf("signature not provided")
+			http.Error(w, "signature not provided", http.StatusBadRequest)
 			return
 		}
-		signature, err := base64.StdEncoding.DecodeString(signatureHeader["validation"])
+		signature, err := base64.StdEncoding.DecodeString(encodedSignature)
 		if err != nil {
-			log.Errorf("failed to decode validation, got err=%v", err)
-			http.Error(w, "failed to parse validation", http.StatusBadRequest)
+			log.Errorf("failed to decode signature, got err=%v", err)
+			http.Error(w, "failed to parse signature", http.StatusBadRequest)
 			return
 		}
 		keyID := signatureHeader["keyId"]
@@ -95,15 +96,15 @@ func Signature(next http.Handler) http.Handler {
 		publicKey, err := parsePublicKeyFromPEMBlock(person.PublicKey.PublicKeyPem)
 		if err != nil {
 			log.Errorf("failed to parse public key from block, got err=%v", err)
-			http.Error(w, "failed to validate validation", http.StatusInternalServerError)
+			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
 			return
 		}
 		log.Infoln("Public Key successfully parsed.")
 		hashed := sha256.Sum256([]byte(toCompare))
 		log.Infoln("Verifying Signature...")
 		if err := rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hashed[:], signature); err != nil {
-			log.Errorf("failed to verify the provided validation, got err=%v", err)
-			http.Error(w, "failed to validate validation", http.StatusInternalServerError)
+			log.Errorf("failed to verify the provided signature, got err=%v", err)
+			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
 			return
 		}
 		next.ServeHTTP(w, r)
