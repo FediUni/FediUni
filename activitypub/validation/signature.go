@@ -23,9 +23,9 @@ func Signature(next http.Handler) http.Handler {
 			http.Error(w, "failed to parse validation", http.StatusBadRequest)
 			return
 		}
-		if signatureHeader["validation"] == "" {
-			log.Errorf("validation not provided")
-			http.Error(w, "validation not provided", http.StatusBadRequest)
+		if signatureHeader["signature"] == "" {
+			log.Errorf("signature not provided")
+			http.Error(w, "signature not provided", http.StatusBadRequest)
 			return
 		}
 		signature, err := base64.StdEncoding.DecodeString(signatureHeader["validation"])
