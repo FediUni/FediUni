@@ -1,4 +1,4 @@
-package signature
+package validation
 
 import (
 	"encoding/json"
@@ -17,7 +17,7 @@ func TestSignRequest(t *testing.T) {
 		wantStatusCode int
 	}{
 		{
-			name:           "Test validate request with valid signature",
+			name:           "Test validate request with valid validation",
 			wantStatusCode: 200,
 		},
 	}
@@ -28,7 +28,7 @@ func TestSignRequest(t *testing.T) {
 				t.Errorf("Failed to generate private key: got err=%v", err)
 			}
 			r := chi.NewRouter()
-			r.With(Validate).Post("/actor/brandonstark/inbox", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+			r.With(Signature).Post("/actor/brandonstark/inbox", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 			r.Get("/actor/brandonstark", func(w http.ResponseWriter, _ *http.Request) {
 				marshalledActor, _ := json.Marshal(&actor.Person{
 					PublicKey: &actor.PublicKey{

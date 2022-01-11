@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/signature"
+	"github.com/FediUni/FediUni/activitypub/validation"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -65,7 +66,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	s.Router.Get("/.well-known/webfinger", s.webfinger)
 	s.Router.Get("/actor/{actorID}", s.getActor)
 	s.Router.Get("/actor/{actorID}/inbox", s.getActorInbox)
-	s.Router.With(signature.Validate).Post("/actor/{actorID}/inbox", s.receiveToActorInbox)
+	s.Router.With(validation.Signature).With(validation.Activity).Post("/actor/{actorID}/inbox", s.receiveToActorInbox)
 	s.Router.Get("/actor/{actorID}/outbox", s.getActorOutbox)
 	s.Router.Post("/register", s.createUser)
 	return s, nil
@@ -152,7 +153,19 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r)
+	raw, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Errorf("failed to read request body: got err=%v", err)
+		http.Error(w, "failed to parse request body", http.StatusBadRequest)
+		return
+	}
+	var parsedJSON map[string]interface{}
+	if err := json.Unmarshal(raw, &parsedJSON); err != nil {
+		log.Errorf("failed to parse request body: got err=%v", err)
+		http.Error(w, "failed to parse request body", http.StatusBadRequest)
+		return
+	}
+
 	w.WriteHeader(200)
 }
 

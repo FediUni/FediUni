@@ -1,4 +1,4 @@
-package signature
+package validation
 
 import (
 	"crypto/rsa"
