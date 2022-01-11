@@ -17,7 +17,7 @@ func TestSignRequest(t *testing.T) {
 		wantStatusCode int
 	}{
 		{
-			name:           "Test validate request with valid validation",
+			name:           "Test validate request with valid signature",
 			wantStatusCode: 200,
 		},
 	}

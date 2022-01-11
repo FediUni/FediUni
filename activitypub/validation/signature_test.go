@@ -113,7 +113,7 @@ func TestValidate(t *testing.T) {
 			if err != nil {
 				t.Errorf("failed to create validation: got err=%v", signature)
 			}
-			header := fmt.Sprintf("keyId=%q,headers=%q,validation=%q", fmt.Sprintf("%s/actor/brandonstark#main-key", serverURL.String()), strings.Join(headers, " "), base64.StdEncoding.EncodeToString(signature))
+			header := fmt.Sprintf("keyId=%q,headers=%q,signature=%q", fmt.Sprintf("%s/actor/brandonstark#main-key", serverURL.String()), strings.Join(headers, " "), base64.StdEncoding.EncodeToString(signature))
 			request.Header.Set("Signature", header)
 			res, err := server.Client().Do(request)
 			if err != nil {

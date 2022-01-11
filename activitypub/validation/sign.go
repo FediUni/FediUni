@@ -42,10 +42,10 @@ func SignRequest(r *http.Request, url *url.URL, keyID string, privateKey string)
 	parsedPrivateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	signature, err := rsa.SignPKCS1v15(rand.Reader, parsedPrivateKey, crypto.SHA256, hash[:])
 	if err != nil {
-		return nil, fmt.Errorf("failed to create validation: got err=%v", signature)
+		return nil, fmt.Errorf("failed to create signature: got err=%v", signature)
 	}
 	encodedSignature := base64.StdEncoding.EncodeToString(signature)
-	header := fmt.Sprintf("keyId=%q,headers=%q,validation=%q", keyID, strings.Join(headers, " "), encodedSignature)
+	header := fmt.Sprintf("keyId=%q,headers=%q,signature=%q", keyID, strings.Join(headers, " "), encodedSignature)
 	r.Header.Set("Signature", header)
 	return r, nil
 }
