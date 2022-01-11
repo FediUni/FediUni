@@ -74,6 +74,7 @@ func Signature(next http.Handler) http.Handler {
 		}
 		pairs := []string{}
 		for _, header := range strings.Split(signatureHeader["headers"], " ") {
+			log.Infof("Checking Header=%q", header)
 			var pair string
 			switch headerName := strings.ToLower(header); headerName {
 			// (request-target) is a fake header that must be constructed using
