@@ -1,4 +1,4 @@
-package signature
+package validation
 
 import (
 	"crypto"
@@ -31,12 +31,12 @@ func TestProcessSignatureHeader(t *testing.T) {
 		{
 			name: "Test typical Signature header",
 			header: http.Header{
-				"Signature": []string{`keyId="https://testservice.com/actor#main-key",headers="(request-target) host date",signature="thisisarandomsignature"`},
+				"Signature": []string{`keyId="https://testservice.com/actor#main-key",headers="(request-target) host date",validation="thisisarandomsignature"`},
 			},
 			wantSignature: map[string]string{
-				"keyId":     "https://testservice.com/actor#main-key",
-				"headers":   "(request-target) host date",
-				"signature": "thisisarandomsignature",
+				"keyId":      "https://testservice.com/actor#main-key",
+				"headers":    "(request-target) host date",
+				"validation": "thisisarandomsignature",
 			},
 		},
 		{
@@ -68,7 +68,7 @@ func TestValidate(t *testing.T) {
 		wantStatusCode int
 	}{
 		{
-			name:           "Test validate request with valid signature (PKCS1)",
+			name:           "Test validate request with valid validation (PKCS1)",
 			keyGenerator:   actor.NewPKCS1KeyGenerator(),
 			wantStatusCode: 200,
 		},
@@ -80,7 +80,7 @@ func TestValidate(t *testing.T) {
 				t.Errorf("Failed to generate private key: got err=%v", err)
 			}
 			r := chi.NewRouter()
-			r.With(Validate).Post("/actor/brandonstark/inbox", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+			r.With(Signature).Post("/actor/brandonstark/inbox", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 			r.Get("/actor/brandonstark", func(w http.ResponseWriter, _ *http.Request) {
 				marshalledActor, _ := json.Marshal(&actor.Person{
 					PublicKey: &actor.PublicKey{
@@ -111,9 +111,9 @@ func TestValidate(t *testing.T) {
 			parsedPrivateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 			signature, err := rsa.SignPKCS1v15(rand.Reader, parsedPrivateKey, crypto.SHA256, hash[:])
 			if err != nil {
-				t.Errorf("failed to create signature: got err=%v", signature)
+				t.Errorf("failed to create validation: got err=%v", signature)
 			}
-			header := fmt.Sprintf("keyId=%q,headers=%q,signature=%q", fmt.Sprintf("%s/actor/brandonstark#main-key", serverURL.String()), strings.Join(headers, " "), base64.StdEncoding.EncodeToString(signature))
+			header := fmt.Sprintf("keyId=%q,headers=%q,validation=%q", fmt.Sprintf("%s/actor/brandonstark#main-key", serverURL.String()), strings.Join(headers, " "), base64.StdEncoding.EncodeToString(signature))
 			request.Header.Set("Signature", header)
 			res, err := server.Client().Do(request)
 			if err != nil {
