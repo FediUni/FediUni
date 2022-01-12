@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/validation"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -24,6 +24,7 @@ import (
 type Datastore interface {
 	GetActor(context.Context, string) (*actor.Person, error)
 	CreateUser(context.Context, *user.User) error
+	AddActivityToSharedInbox(context.Context, *activity.Activity, string) error
 }
 
 type Server struct {
@@ -153,19 +154,13 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
-	raw, err := ioutil.ReadAll(r.Body)
+	activity, err := activity.ParseActivity(r)
 	if err != nil {
-		log.Errorf("failed to read request body: got err=%v", err)
-		http.Error(w, "failed to parse request body", http.StatusBadRequest)
+		log.Errorf("failed to parse Activity from request: got err=%v", err)
+		http.Error(w, "failed to parse Activity from request", http.StatusInternalServerError)
 		return
 	}
-	var parsedJSON map[string]interface{}
-	if err := json.Unmarshal(raw, &parsedJSON); err != nil {
-		log.Errorf("failed to parse request body: got err=%v", err)
-		http.Error(w, "failed to parse request body", http.StatusBadRequest)
-		return
-	}
-
+	s.Datastore.AddActivityToSharedInbox(r.Context(), activity, s.URL.String())
 	w.WriteHeader(200)
 }
 
