@@ -2,7 +2,9 @@ package mongowrapper
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
 	log "github.com/golang/glog"
@@ -47,5 +49,22 @@ func (d *Datastore) CreateUser(ctx context.Context, user *user.User) error {
 		return err
 	}
 	log.Infof("Inserted user %q with _id=%q", user.Username, res.InsertedID)
+	return nil
+}
+
+func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity *activity.Activity, baseURL string) error {
+	activities := d.client.Database("FediUni").Collection("activities")
+	marshalledActivity, err := activity.BSON()
+	if err != nil {
+		return err
+	}
+	if activity.ID == "" {
+		activity.ID = fmt.Sprintf("%s/activities/%s", baseURL, sha256.Sum256(marshalledActivity))
+	}
+	res, err := activities.InsertOne(ctx, bson.D{{"hash", sha256.Sum256(marshalledActivity)}, {"activity", marshalledActivity}})
+	if err != nil {
+		return err
+	}
+	log.Infof("Inserted activity %q with _id=%q", activity.ID, res.InsertedID)
 	return nil
 }

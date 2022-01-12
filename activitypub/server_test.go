@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
 	"github.com/google/go-cmp/cmp"
@@ -59,6 +60,10 @@ func (d *TestDatastore) GetActor(_ context.Context, username string) (*actor.Per
 
 func (d *TestDatastore) CreateUser(_ context.Context, _ *user.User) error {
 	return fmt.Errorf("CreateUser() is Unimplemented")
+}
+
+func (d *TestDatastore) AddActivityToSharedInbox(context.Context, *activity.Activity, string) error {
+	return fmt.Errorf("AddActivityToSharedInbox() is unimplemented")
 }
 
 type TestKeyGenerator struct{}

@@ -33,7 +33,6 @@ func SignRequest(r *http.Request, url *url.URL, keyID string, privateKey string)
 		pairs = append(pairs, fmt.Sprintf("%s: %s", strings.ToLower(name), value[0]))
 	}
 	toSign := strings.Join(pairs, "\n")
-	fmt.Println(toSign)
 	hash := sha256.Sum256([]byte(toSign))
 	block, _ := pem.Decode([]byte(privateKey))
 	if block == nil {
