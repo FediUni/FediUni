@@ -2,14 +2,15 @@ package mongowrapper
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
 	log "github.com/golang/glog"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"time"
 )
 
 // Datastore wraps the MongoDB client and handles MongoDB operations.
@@ -54,17 +55,31 @@ func (d *Datastore) CreateUser(ctx context.Context, user *user.User) error {
 
 func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity *activity.Activity, baseURL string) error {
 	activities := d.client.Database("FediUni").Collection("activities")
+	activity.MongoID = primitive.NewObjectIDFromTimestamp(time.Now())
+	if activity.ID == "" {
+		activity.ID = fmt.Sprintf("%s/activity/%s", baseURL, activity.MongoID.String())
+	}
 	marshalledActivity, err := activity.BSON()
 	if err != nil {
 		return err
 	}
-	if activity.ID == "" {
-		activity.ID = fmt.Sprintf("%s/activities/%s", baseURL, sha256.Sum256(marshalledActivity))
-	}
-	res, err := activities.InsertOne(ctx, bson.D{{"hash", sha256.Sum256(marshalledActivity)}, {"activity", marshalledActivity}})
+	res, err := activities.InsertOne(ctx, marshalledActivity)
 	if err != nil {
 		return err
 	}
 	log.Infof("Inserted activity %q with _id=%q", activity.ID, res.InsertedID)
 	return nil
+}
+
+func (d *Datastore) GetActivity(ctx context.Context, activityID string) (*activity.Activity, error) {
+	activities := d.client.Database("FediUni").Collection("activities")
+	filter := bson.D{{"_id", activityID}}
+	var activity *activity.Activity
+	if err := activities.FindOne(ctx, filter).Decode(&activity); err != nil {
+		return nil, err
+	}
+	if activity == nil {
+		return nil, fmt.Errorf("unable to load user with _id=%q", activityID)
+	}
+	return activity, nil
 }
