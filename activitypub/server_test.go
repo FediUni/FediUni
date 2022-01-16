@@ -66,6 +66,10 @@ func (d *TestDatastore) AddActivityToSharedInbox(context.Context, *activity.Acti
 	return fmt.Errorf("AddActivityToSharedInbox() is unimplemented")
 }
 
+func (d *TestDatastore) GetActivity(_ context.Context, _ string) (*activity.Activity, error) {
+	return nil, fmt.Errorf("GetActivity() is unimplemented")
+}
+
 type TestKeyGenerator struct{}
 
 func (g *TestKeyGenerator) GenerateKeyPair() (string, string, error) {

@@ -23,6 +23,7 @@ import (
 
 type Datastore interface {
 	GetActor(context.Context, string) (*actor.Person, error)
+	GetActivity(context.Context, string) (*activity.Activity, error)
 	CreateUser(context.Context, *user.User) error
 	AddActivityToSharedInbox(context.Context, *activity.Activity, string) error
 }
@@ -67,6 +68,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	s.Router.Get("/.well-known/webfinger", s.webfinger)
 	s.Router.Get("/actor/{actorID}", s.getActor)
 	s.Router.Get("/actor/{actorID}/inbox", s.getActorInbox)
+	s.Router.Get("/activity/{activityID}", s.getActivity)
 	s.Router.With(validation.Signature).With(validation.Activity).Post("/actor/{actorID}/inbox", s.receiveToActorInbox)
 	s.Router.Get("/actor/{actorID}/outbox", s.getActorOutbox)
 	s.Router.Post("/register", s.createUser)
@@ -109,6 +111,27 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledPerson)
+}
+
+func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
+	activityID := chi.URLParam(r, "activityID")
+	if activityID == "" {
+		http.Error(w, "activityID is unspecified", http.StatusBadRequest)
+	}
+	activity, err := s.Datastore.GetActivity(r.Context(), activityID)
+	if err != nil {
+		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
+		http.Error(w, "failed to load activity", http.StatusNotFound)
+		return
+	}
+	marshalledActivity, err := json.Marshal(activity)
+	if err != nil {
+		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
+		http.Error(w, "failed to load activity", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledActivity)
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +183,11 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to parse Activity from request", http.StatusInternalServerError)
 		return
 	}
-	s.Datastore.AddActivityToSharedInbox(r.Context(), activity, s.URL.String())
+	if err := s.Datastore.AddActivityToSharedInbox(r.Context(), activity, s.URL.String()); err != nil {
+		log.Errorf("failed to add to inbox: got err=%v", err)
+		http.Error(w, "failed to add to inbox", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(200)
 }
 

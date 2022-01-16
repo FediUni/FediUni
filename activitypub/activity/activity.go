@@ -4,20 +4,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"io/ioutil"
 	"net/http"
 	"time"
 )
 
 type Activity struct {
-	Context   string      `json:"@context"`
-	ID        string      `json:"id"`
-	Type      string      `json:"type"`
-	Published time.Time   `json:"time"`
-	Actor     string      `json:"actor"`
-	To        []string    `json:"to"`
-	CC        []string    `json:"cc"`
-	Object    interface{} `json:"object"`
+	Context   []interface{}      `json:"@context"`
+	MongoID   primitive.ObjectID `bson:"_id"`
+	ID        string             `json:"id"`
+	Type      string             `json:"type"`
+	Published time.Time          `json:"time"`
+	Actor     string             `json:"actor"`
+	To        []string           `json:"to"`
+	CC        []string           `json:"cc"`
+	Object    interface{}        `json:"object"`
 }
 
 // ParseActivity returns an Activity from an HTTP Request.
