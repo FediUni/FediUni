@@ -18,7 +18,7 @@ type PublicKey struct {
 
 // Person is a type of Actor from https://www.w3.org/TR/activitypub/#actors.
 type Person struct {
-	Context []interface{} `json:"@context"`
+	Context interface{} `json:"@context"`
 
 	Type string `json:"type"`
 

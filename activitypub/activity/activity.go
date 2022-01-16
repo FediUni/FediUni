@@ -11,7 +11,7 @@ import (
 )
 
 type Activity struct {
-	Context   []interface{}      `json:"@context"`
+	Context   interface{}        `json:"@context"`
 	MongoID   primitive.ObjectID `bson:"_id"`
 	ID        string             `json:"id"`
 	Type      string             `json:"type"`
@@ -19,7 +19,8 @@ type Activity struct {
 	Actor     string             `json:"actor"`
 	To        []string           `json:"to"`
 	CC        []string           `json:"cc"`
-	Object    interface{}        `json:"object"`
+	Object    interface {
+	} `json:"object"`
 }
 
 // ParseActivity returns an Activity from an HTTP Request.
