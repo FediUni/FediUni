@@ -23,7 +23,7 @@ import (
 
 type Datastore interface {
 	GetActor(context.Context, string) (*actor.Person, error)
-	GetActivity(context.Context, string) (*activity.Activity, error)
+	GetActivity(context.Context, string, string) (*activity.Activity, error)
 	CreateUser(context.Context, *user.User) error
 	AddActivityToSharedInbox(context.Context, *activity.Activity, string) error
 }
@@ -118,7 +118,7 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 	if activityID == "" {
 		http.Error(w, "activityID is unspecified", http.StatusBadRequest)
 	}
-	activity, err := s.Datastore.GetActivity(r.Context(), activityID)
+	activity, err := s.Datastore.GetActivity(r.Context(), activityID, s.URL.String())
 	if err != nil {
 		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
 		http.Error(w, "failed to load activity", http.StatusNotFound)
