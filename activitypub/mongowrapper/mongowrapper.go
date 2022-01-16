@@ -71,13 +71,13 @@ func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity *acti
 	return nil
 }
 
-func (d *Datastore) GetActivity(ctx context.Context, activityID string) (*activity.Activity, error) {
+func (d *Datastore) GetActivity(ctx context.Context, activityID, baseURL string) (*activity.Activity, error) {
 	activities := d.client.Database("FediUni").Collection("activities")
 	objectID, err := primitive.ObjectIDFromHex(activityID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ObjectID from")
 	}
-	filter := bson.D{{"_id", objectID}}
+	filter := bson.D{{"_id", objectID}, {"id", fmt.Sprintf("%s/activity/%s", baseURL, activityID)}}
 	var activity *activity.Activity
 	if err := activities.FindOne(ctx, filter).Decode(&activity); err != nil {
 		return nil, err
