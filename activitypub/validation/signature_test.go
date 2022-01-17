@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-fed/activity/streams"
 	"github.com/google/go-cmp/cmp"
 	"net/http"
 	"net/http/httptest"
@@ -75,19 +76,21 @@ func TestValidate(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			privateKey, publicKey, err := test.keyGenerator.GenerateKeyPair()
+			testURL, _ := url.Parse("testfediuni.com")
+			keyGenerator := actor.NewPKCS1KeyGenerator()
+			generator := actor.NewPersonGenerator(testURL, keyGenerator)
+			person, err := generator.NewPerson("brandonstark", "8R4ND0N")
 			if err != nil {
-				t.Errorf("Failed to generate private key: got err=%v", err)
+				t.Errorf("failed to load actor: got err=%v", err)
+				return
 			}
 			r := chi.NewRouter()
 			r.With(Signature).Post("/actor/brandonstark/inbox", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 			r.Get("/actor/brandonstark", func(w http.ResponseWriter, _ *http.Request) {
-				marshalledActor, _ := json.Marshal(&actor.Person{
-					PublicKey: &actor.PublicKey{
-						PublicKeyPem: publicKey,
-					},
-				})
-				w.Write(marshalledActor)
+				serializedPerson, _ := streams.Serialize(person)
+				marshalledPerson, _ := json.Marshal(serializedPerson)
+				w.WriteHeader(http.StatusOK)
+				w.Write(marshalledPerson)
 			})
 			server := httptest.NewServer(r)
 			serverURL, _ := url.Parse(server.URL)
@@ -104,7 +107,7 @@ func TestValidate(t *testing.T) {
 			}
 			toSign := strings.Join(pairs, "\n")
 			hash := sha256.Sum256([]byte(toSign))
-			block, _ := pem.Decode([]byte(privateKey))
+			block, _ := pem.Decode(keyGenerator.PrivateKey.Bytes())
 			if block == nil {
 				t.Errorf("failed to parse PEM block")
 			}

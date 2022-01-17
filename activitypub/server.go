@@ -22,7 +22,7 @@ import (
 )
 
 type Datastore interface {
-	GetActor(context.Context, string) (*actor.Person, error)
+	GetActor(context.Context, string) (actor.Person, error)
 	GetActivity(context.Context, string, string) (*activity.Activity, error)
 	CreateUser(context.Context, *user.User) error
 	AddActivityToSharedInbox(context.Context, *activity.Activity, string) error
@@ -141,7 +141,8 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	displayName := r.FormValue("displayName")
 	password := r.FormValue("password")
-	person, err := actor.NewPerson(username, displayName, s.URL.String(), s.KeyGenerator)
+	generator := actor.NewPersonGenerator(s.URL, s.KeyGenerator)
+	person, err := generator.NewPerson(username, displayName)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusBadRequest)
 		log.Errorf("Failed to create person, got err=%v", err)
@@ -215,18 +216,19 @@ func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to parse username"), http.StatusBadRequest)
 		return
 	}
-	actor, err := s.Datastore.GetActor(r.Context(), username)
+	person, err := s.Datastore.GetActor(r.Context(), username)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("unable to find actor"), http.StatusNotFound)
 		return
 	}
+	id := person.GetJSONLDId().Get()
 	res := &WebfingerResponse{
 		Subject: resource,
 		Links: []WebfingerLink{
 			{
 				Rel:  "self",
 				Type: "application/activity+json",
-				Href: actor.Id,
+				Href: id.String(),
 			},
 		},
 	}

@@ -26,7 +26,7 @@ func NewDatastore(client *mongo.Client) (*Datastore, error) {
 }
 
 // GetActor returns an instance of Person from Mongo.
-func (d *Datastore) GetActor(ctx context.Context, username string) (*actor.Person, error) {
+func (d *Datastore) GetActor(ctx context.Context, username string) (actor.Person, error) {
 	users := d.client.Database("FediUni").Collection("users")
 	filter := bson.D{{"username", username}}
 	user := &user.User{}
