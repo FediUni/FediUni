@@ -16,42 +16,26 @@ import (
 )
 
 type TestDatastore struct {
-	knownUsers  map[string]*actor.Person
+	knownUsers  map[string]actor.Person
 	privateKeys map[string]string
 }
 
-func NewTestDatastore(url string) *TestDatastore {
+func NewTestDatastore(rawURL string) *TestDatastore {
+	parsedURL, _ := url.Parse(rawURL)
 	keyGenerator := actor.NewPKCS1KeyGenerator()
-	privateKey, publicKey, _ := keyGenerator.GenerateKeyPair()
+	personGenerator := actor.NewPersonGenerator(parsedURL, keyGenerator)
+	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
 	return &TestDatastore{
-		knownUsers: map[string]*actor.Person{
-			"brandonstark": {
-				Context:           nil,
-				Type:              "",
-				Id:                fmt.Sprintf("%s/actor/brandonstark", url),
-				PreferredUsername: "brandonstark",
-				Inbox:             fmt.Sprintf("%s/actor/brandonstark/inbox", url),
-				Outbox:            fmt.Sprintf("%s/actor/brandonstark/outbox", url),
-				Following:         fmt.Sprintf("%s/actor/brandonstark/following", url),
-				Followers:         fmt.Sprintf("%s/actor/brandonstark/followers", url),
-				Liked:             fmt.Sprintf("%s/actor/brandonstark/liked", url),
-				Icon:              "",
-				Name:              "Brandon Stark",
-				Summary:           "",
-				PublicKey: &actor.PublicKey{
-					Id:           fmt.Sprintf("%s/actor/brandonstark#public-key", url),
-					Owner:        fmt.Sprintf("%s/actor/brandonstark", url),
-					PublicKeyPem: publicKey,
-				},
-			},
+		knownUsers: map[string]actor.Person{
+			"brandonstark": person,
 		},
 		privateKeys: map[string]string{
-			"brandonstark": privateKey,
+			"brandonstark": keyGenerator.PrivateKey.String(),
 		},
 	}
 }
 
-func (d *TestDatastore) GetActor(_ context.Context, username string) (*actor.Person, error) {
+func (d *TestDatastore) GetActor(_ context.Context, username string) (actor.Person, error) {
 	if a := d.knownUsers[username]; a != nil {
 		return a, nil
 	}

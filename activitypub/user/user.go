@@ -15,11 +15,11 @@ const (
 type User struct {
 	Username       string
 	HashedPassword string
-	Person         *actor.Person
+	Person         actor.Person
 }
 
 // NewUser returns a valid user struct.
-func NewUser(username, password string, person *actor.Person) (*User, error) {
+func NewUser(username, password string, person actor.Person) (*User, error) {
 	if username == "" {
 		return nil, fmt.Errorf("username is unspecified: got username=%q", username)
 	}
