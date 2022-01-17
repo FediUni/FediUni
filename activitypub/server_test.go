@@ -62,11 +62,11 @@ func (d *TestDatastore) CreateUser(_ context.Context, _ *user.User) error {
 	return fmt.Errorf("CreateUser() is Unimplemented")
 }
 
-func (d *TestDatastore) AddActivityToSharedInbox(context.Context, *activity.Activity, string) error {
+func (d *TestDatastore) AddActivityToSharedInbox(_ context.Context, _ *activity.Activity, _ string) error {
 	return fmt.Errorf("AddActivityToSharedInbox() is unimplemented")
 }
 
-func (d *TestDatastore) GetActivity(_ context.Context, _ string) (*activity.Activity, error) {
+func (d *TestDatastore) GetActivity(_ context.Context, _ string, _ string) (*activity.Activity, error) {
 	return nil, fmt.Errorf("GetActivity() is unimplemented")
 }
 
