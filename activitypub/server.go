@@ -199,7 +199,11 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 	activity, err := streams.ToType(ctx, m)
 	switch typeName := activity.GetTypeName(); typeName {
 	case "Follow":
-		s.followUser(ctx, activity)
+		if err := s.followUser(ctx, activity); err != nil {
+			log.Errorf("failed to follow user: err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to handle follow request"), http.StatusInternalServerError)
+			return
+		}
 	default:
 		log.Errorf("Unsupported Type: got=%q", typeName)
 		http.Error(w, "failed to process activity", http.StatusInternalServerError)
