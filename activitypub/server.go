@@ -1,13 +1,17 @@
 package activitypub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/validation"
+	"github.com/go-fed/activity/streams"
+	"github.com/go-fed/activity/streams/vocab"
+	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -23,9 +27,10 @@ import (
 
 type Datastore interface {
 	GetActor(context.Context, string) (actor.Person, error)
-	GetActivity(context.Context, string, string) (*activity.Activity, error)
+	GetActivity(context.Context, string, string) (vocab.Type, error)
 	CreateUser(context.Context, *user.User) error
-	AddActivityToSharedInbox(context.Context, *activity.Activity, string) error
+	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
+	AddFollowerToActor(context.Context, string, string) error
 }
 
 type Server struct {
@@ -69,7 +74,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	s.Router.Get("/actor/{actorID}", s.getActor)
 	s.Router.Get("/actor/{actorID}/inbox", s.getActorInbox)
 	s.Router.Get("/activity/{activityID}", s.getActivity)
-	s.Router.With(validation.Signature).With(validation.Activity).Post("/actor/{actorID}/inbox", s.receiveToActorInbox)
+	s.Router.With(validation.Signature).Post("/actor/{actorID}/inbox", s.receiveToActorInbox)
 	s.Router.Get("/actor/{actorID}/outbox", s.getActorOutbox)
 	s.Router.Post("/register", s.createUser)
 	return s, nil
@@ -178,10 +183,26 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
-	activity, err := activity.ParseActivity(r)
+	ctx := r.Context()
+	raw, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Errorf("failed to parse Activity from request: got err=%v", err)
-		http.Error(w, "failed to parse Activity from request", http.StatusInternalServerError)
+		log.Errorf("failed to unmarshal JSON from request body: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to unmarshal request body: got err=%v", err), http.StatusBadRequest)
+		return
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		log.Errorf("failed to unmarshal JSON from request body: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to unmarshal request body: got err=%v", err), http.StatusBadRequest)
+		return
+	}
+	activity, err := streams.ToType(ctx, m)
+	switch typeName := activity.GetTypeName(); typeName {
+	case "Follow":
+		s.followUser(ctx, activity)
+	default:
+		log.Errorf("Unsupported Type: got=%q", typeName)
+		http.Error(w, "failed to process activity", http.StatusInternalServerError)
 		return
 	}
 	if err := s.Datastore.AddActivityToSharedInbox(r.Context(), activity, s.URL.String()); err != nil {
@@ -190,6 +211,75 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(200)
+}
+
+func (s *Server) followUser(ctx context.Context, activity vocab.Type) error {
+	var follow vocab.ActivityStreamsFollow
+	followResolver, err := streams.NewTypeResolver(func(ctx context.Context, f vocab.ActivityStreamsFollow) error {
+		follow = f
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create TypeResolver: got err=%v", err)
+	}
+	err = followResolver.Resolve(ctx, activity)
+	if err != nil {
+		return fmt.Errorf("failed to resolve type to Follow activity: got err=%v", err)
+	}
+	if err := s.acceptFollower(ctx, follow); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStreamsFollow) error {
+	actorID := follow.GetActivityStreamsActor().Begin().GetIRI()
+	if actorID.String() == "" {
+		return fmt.Errorf("actor ID is unspecified: got=%q", actorID)
+	}
+	followerID := follow.GetActivityStreamsObject().Begin().GetIRI()
+	if followerID.String() == "" {
+		return fmt.Errorf("follower ID is unspecified: got=%q", actorID)
+	}
+	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
+		return fmt.Errorf("failed to add follower to Datastore: err=%v", err)
+	}
+	acceptActivity := streams.NewActivityStreamsAccept()
+	actorProperty := streams.NewActivityStreamsActorProperty()
+	actorProperty.AppendIRI(actorID)
+	acceptActivity.SetActivityStreamsActor(actorProperty)
+	objectProperty := streams.NewActivityStreamsObjectProperty()
+	objectProperty.AppendActivityStreamsFollow(follow)
+	acceptActivity.SetActivityStreamsObject(objectProperty)
+	m, err := streams.Serialize(acceptActivity)
+	if err != nil {
+		return err
+	}
+	marshalledActivity, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.URL.String(), bytes.NewBuffer(marshalledActivity))
+	if err != nil {
+		return err
+	}
+	pem, err := s.readPrivateKey(follow.GetActivityStreamsActor().Begin().GetActivityStreamsPerson().GetActivityStreamsPreferredUsername().GetXMLSchemaString())
+	if err != nil {
+		return err
+	}
+	privateKey, err := validation.ParsePrivateKeyFromPEMBlock(pem)
+	if err != nil {
+		return err
+	}
+	request, err = validation.SignRequestWithDigest(request, s.URL, actorID.String(), privateKey)
+	if err != nil {
+		return err
+	}
+	_, err = http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
@@ -201,6 +291,7 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "actor outbox lookup is unimplemented", http.StatusNotImplemented)
 }
 
+// webfinger allow other services to query if a user on this instance.
 func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
 	resource := r.URL.Query().Get("resource")
 	var username string
@@ -239,4 +330,12 @@ func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(200)
 	w.Write(response)
+}
+
+func (s *Server) readPrivateKey(actor string) (string, error) {
+	privateKeyPEM, err := os.ReadFile(filepath.Join(s.Keys, fmt.Sprintf("%s_private.pem", actor)))
+	if err != nil {
+		return "", err
+	}
+	return string(privateKeyPEM), nil
 }

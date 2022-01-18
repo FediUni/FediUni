@@ -3,13 +3,16 @@ package mongowrapper
 import (
 	"context"
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
+	"github.com/go-fed/activity/streams"
+	"github.com/go-fed/activity/streams/vocab"
 	log "github.com/golang/glog"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"net/url"
 	"time"
 )
 
@@ -53,13 +56,19 @@ func (d *Datastore) CreateUser(ctx context.Context, user *user.User) error {
 	return nil
 }
 
-func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity *activity.Activity, baseURL string) error {
+func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab.Type, baseURL string) error {
 	activities := d.client.Database("FediUni").Collection("activities")
-	activity.MongoID = primitive.NewObjectIDFromTimestamp(time.Now())
-	if activity.ID == "" {
-		activity.ID = fmt.Sprintf("%s/activity/%s", baseURL, activity.MongoID.String())
+	objectID := primitive.NewObjectIDFromTimestamp(time.Now())
+	id, err := url.Parse(fmt.Sprintf("%s/activity/%s", baseURL, objectID))
+	if err != nil {
+		return err
 	}
-	marshalledActivity, err := activity.BSON()
+	if activity.GetJSONLDId().Get().String() == "" {
+		idProperty := streams.NewJSONLDIdProperty()
+		idProperty.Set(id)
+		activity.SetJSONLDId(idProperty)
+	}
+	marshalledActivity, err := streams.Serialize(activity)
 	if err != nil {
 		return err
 	}
@@ -67,18 +76,18 @@ func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity *acti
 	if err != nil {
 		return err
 	}
-	log.Infof("Inserted activity %q with _id=%q", activity.ID, res.InsertedID)
+	log.Infof("Inserted activity %q with _id=%q", id.String(), res.InsertedID)
 	return nil
 }
 
-func (d *Datastore) GetActivity(ctx context.Context, activityID, baseURL string) (*activity.Activity, error) {
+func (d *Datastore) GetActivity(ctx context.Context, activityID, baseURL string) (vocab.Type, error) {
 	activities := d.client.Database("FediUni").Collection("activities")
 	objectID, err := primitive.ObjectIDFromHex(activityID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ObjectID from")
 	}
 	filter := bson.D{{"_id", objectID}, {"id", fmt.Sprintf("%s/activity/%s", baseURL, activityID)}}
-	var activity *activity.Activity
+	var activity vocab.Type
 	if err := activities.FindOne(ctx, filter).Decode(&activity); err != nil {
 		return nil, err
 	}
@@ -86,4 +95,13 @@ func (d *Datastore) GetActivity(ctx context.Context, activityID, baseURL string)
 		return nil, fmt.Errorf("unable to load user with _id=%q", activityID)
 	}
 	return activity, nil
+}
+
+func (d *Datastore) AddFollowerToActor(ctx context.Context, actorID, followerID string) error {
+	users := d.client.Database("FediUni").Collection("followers")
+	opts := options.Update().SetUpsert(true)
+	if _, err := users.UpdateOne(ctx, bson.D{{"_id", actorID}}, bson.D{{"$push", bson.D{{"followers", followerID}}}}, opts); err != nil {
+		return fmt.Errorf("failed to add follower to actor: got err=%v", err)
+	}
+	return nil
 }
