@@ -5,9 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
-	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,12 +13,16 @@ import (
 	"time"
 )
 
-func SignRequest(r *http.Request, url *url.URL, keyID string, privateKey string) (*http.Request, error) {
+func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateKey *rsa.PrivateKey) (*http.Request, error) {
 	if keyID == "" {
 		return nil, fmt.Errorf("keyID must be specified, got=%q", keyID)
 	}
 	if url.Host == "" {
 		return nil, fmt.Errorf("URL host must be specifed, got=%q", url.String())
+	}
+	r, err := addDigest(r)
+	if err != nil {
+		return nil, err
 	}
 	httpDate := time.Now().UTC().Format(http.TimeFormat)
 	host := url.Host
@@ -34,12 +36,7 @@ func SignRequest(r *http.Request, url *url.URL, keyID string, privateKey string)
 	}
 	toSign := strings.Join(pairs, "\n")
 	hash := sha256.Sum256([]byte(toSign))
-	block, _ := pem.Decode([]byte(privateKey))
-	if block == nil {
-		return nil, fmt.Errorf("failed to parse PEM block")
-	}
-	parsedPrivateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	signature, err := rsa.SignPKCS1v15(rand.Reader, parsedPrivateKey, crypto.SHA256, hash[:])
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hash[:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to create signature: got err=%v", signature)
 	}

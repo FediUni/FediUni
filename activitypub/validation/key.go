@@ -27,3 +27,11 @@ func parsePublicKeyFromPEMBlock(publicKeyPEM string) (*rsa.PublicKey, error) {
 	}
 	return nil, fmt.Errorf("unknown public key format parsed")
 }
+
+func ParsePrivateKeyFromPEMBlock(privateKeyPEM string) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode([]byte(privateKeyPEM))
+	if block == nil {
+		return nil, fmt.Errorf("failed to parse PEM block")
+	}
+	return x509.ParsePKCS1PrivateKey(block.Bytes)
+}

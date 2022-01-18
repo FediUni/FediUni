@@ -44,9 +44,10 @@ func TestSignRequest(t *testing.T) {
 			serverURL, _ := url.Parse(server.URL)
 			defer server.Close()
 			request, _ := http.NewRequest("POST", fmt.Sprintf("%s/actor/brandonstark/inbox", serverURL), nil)
-			request, err = SignRequest(request, serverURL, fmt.Sprintf("%s/actor/brandonstark", serverURL), keyGenerator.PrivateKey.String())
+			privateKey, _ := ParsePrivateKeyFromPEMBlock(keyGenerator.PrivateKey.String())
+			request, err = SignRequestWithDigest(request, serverURL, fmt.Sprintf("%s/actor/brandonstark", serverURL), privateKey)
 			if err != nil {
-				t.Errorf("SignRequest(): Unexpected error returned: got err=%v", err)
+				t.Errorf("SignRequestWithDigest(): Unexpected error returned: got err=%v", err)
 			}
 			res, err := server.Client().Do(request)
 			if err != nil {

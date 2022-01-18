@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
+	"github.com/go-fed/activity/streams/vocab"
 	"github.com/google/go-cmp/cmp"
 	"io/ioutil"
 	"net/http"
@@ -46,12 +46,16 @@ func (d *TestDatastore) CreateUser(_ context.Context, _ *user.User) error {
 	return fmt.Errorf("CreateUser() is Unimplemented")
 }
 
-func (d *TestDatastore) AddActivityToSharedInbox(_ context.Context, _ *activity.Activity, _ string) error {
+func (d *TestDatastore) AddActivityToSharedInbox(_ context.Context, _ vocab.Type, _ string) error {
 	return fmt.Errorf("AddActivityToSharedInbox() is unimplemented")
 }
 
-func (d *TestDatastore) GetActivity(_ context.Context, _ string, _ string) (*activity.Activity, error) {
+func (d *TestDatastore) GetActivity(_ context.Context, _ string, _ string) (vocab.Type, error) {
 	return nil, fmt.Errorf("GetActivity() is unimplemented")
+}
+
+func (d *TestDatastore) AddFollowerToActor(context.Context, string, string) error {
+	return fmt.Errorf("AddFollowerToActor() is unimplemented")
 }
 
 type TestKeyGenerator struct{}
