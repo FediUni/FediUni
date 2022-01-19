@@ -230,9 +230,11 @@ func (s *Server) followUser(ctx context.Context, activity vocab.Type) error {
 	if err != nil {
 		return fmt.Errorf("failed to resolve type to Follow activity: got err=%v", err)
 	}
+	log.Infoln("Successfully resolved Type to ActivityStreamsFollow")
 	if err := s.acceptFollower(ctx, follow); err != nil {
 		return err
 	}
+	log.Infoln("Successfully Accepted Follower!")
 	return nil
 }
 
@@ -263,6 +265,7 @@ func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStream
 	if err != nil {
 		return err
 	}
+	log.Infof("Sending Accept Activity to followerID=%q", followerID)
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.URL.String(), bytes.NewBuffer(marshalledActivity))
 	if err != nil {
 		return err
@@ -279,10 +282,11 @@ func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStream
 	if err != nil {
 		return err
 	}
-	_, err = http.DefaultClient.Do(request)
+	res, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
 	}
+	log.Infof("AcceptActivity successfully POSTed: got StatusCode=%d", res.StatusCode)
 	return nil
 }
 
