@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	log "github.com/golang/glog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -20,10 +21,13 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	if url.Host == "" {
 		return nil, fmt.Errorf("URL host must be specifed, got=%q", url.String())
 	}
+	log.Infoln("Calculating Digest...")
 	r, err := addDigest(r)
 	if err != nil {
 		return nil, err
 	}
+	log.Infoln("Successfully Determined Digest")
+	log.Infoln("Calculating Request Signature")
 	httpDate := time.Now().UTC().Format(http.TimeFormat)
 	host := url.Host
 	r.Header.Set("Host", host)
@@ -43,5 +47,6 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	encodedSignature := base64.StdEncoding.EncodeToString(signature)
 	header := fmt.Sprintf("keyId=%q,headers=%q,signature=%q", keyID, strings.Join(headers, " "), encodedSignature)
 	r.Header.Set("Signature", header)
+	log.Infoln("Successfully Determined HTTP Request Signature")
 	return r, nil
 }

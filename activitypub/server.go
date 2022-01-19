@@ -197,8 +197,10 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	activity, err := streams.ToType(ctx, m)
+	log.Infof("Determining Activity Type: got=%q", activity.GetTypeName())
 	switch typeName := activity.GetTypeName(); typeName {
 	case "Follow":
+		log.Infoln("Received Follow Activity")
 		if err := s.followUser(ctx, activity); err != nil {
 			log.Errorf("failed to follow user: err=%v", err)
 			http.Error(w, fmt.Sprintf("failed to handle follow request"), http.StatusInternalServerError)
