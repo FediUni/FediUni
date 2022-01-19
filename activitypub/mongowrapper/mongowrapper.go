@@ -28,8 +28,8 @@ func NewDatastore(client *mongo.Client) (*Datastore, error) {
 	}, nil
 }
 
-// GetActor returns an instance of Person from Mongo.
-func (d *Datastore) GetActor(ctx context.Context, username string) (actor.Person, error) {
+// GetActorByUsername returns an instance of Person from Mongo using Username.
+func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (actor.Person, error) {
 	users := d.client.Database("FediUni").Collection("users")
 	filter := bson.D{{"username", username}}
 	user := &user.User{}
@@ -38,6 +38,20 @@ func (d *Datastore) GetActor(ctx context.Context, username string) (actor.Person
 	}
 	if user.Person == nil {
 		return nil, fmt.Errorf("unable to load user with username=%q", username)
+	}
+	return user.Person, nil
+}
+
+// GetActorByActorID returns an instance of Person from Mongo using URI.
+func (d *Datastore) GetActorByActorID(ctx context.Context, actorID string) (actor.Person, error) {
+	users := d.client.Database("FediUni").Collection("users")
+	filter := bson.D{{"person.id", actorID}}
+	user := &user.User{}
+	if err := users.FindOne(ctx, filter).Decode(&user); err != nil {
+		return nil, err
+	}
+	if user.Person == nil {
+		return nil, fmt.Errorf("unable to load actor with ID=%q", actorID)
 	}
 	return user.Person, nil
 }

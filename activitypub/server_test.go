@@ -35,11 +35,15 @@ func NewTestDatastore(rawURL string) *TestDatastore {
 	}
 }
 
-func (d *TestDatastore) GetActor(_ context.Context, username string) (actor.Person, error) {
+func (d *TestDatastore) GetActorByUsername(_ context.Context, username string) (actor.Person, error) {
 	if a := d.knownUsers[username]; a != nil {
 		return a, nil
 	}
 	return nil, fmt.Errorf("unable to find actor with username=%q", username)
+}
+
+func (d *TestDatastore) GetActorByActorID(_ context.Context, _ string) (actor.Person, error) {
+	return nil, fmt.Errorf("GetActorByActorID() is unimplemented")
 }
 
 func (d *TestDatastore) CreateUser(_ context.Context, _ *user.User) error {

@@ -26,11 +26,12 @@ import (
 )
 
 type Datastore interface {
-	GetActor(context.Context, string) (actor.Person, error)
+	GetActorByUsername(context.Context, string) (actor.Person, error)
 	GetActivity(context.Context, string, string) (vocab.Type, error)
 	CreateUser(context.Context, *user.User) error
 	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
 	AddFollowerToActor(context.Context, string, string) error
+	GetActorByActorID(context.Context, string) (actor.Person, error)
 }
 
 type Server struct {
@@ -103,7 +104,7 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "actorID is unspecified", http.StatusBadRequest)
 		return
 	}
-	person, err := s.Datastore.GetActor(r.Context(), actorID)
+	person, err := s.Datastore.GetActorByUsername(r.Context(), actorID)
 	if err != nil {
 		log.Errorf("failed to get actor with ID=%q: got err=%v", actorID, err)
 		http.Error(w, "failed to load actor", http.StatusNotFound)
@@ -272,7 +273,18 @@ func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStream
 	if err != nil {
 		return err
 	}
-	pem, err := s.readPrivateKey(follow.GetActivityStreamsActor().Begin().GetActivityStreamsPerson().GetActivityStreamsPreferredUsername().GetXMLSchemaString())
+	if follow.GetActivityStreamsActor().Empty() {
+		return fmt.Errorf("follow request failed to provide an actor")
+	}
+	if !follow.GetActivityStreamsActor().Begin().IsActivityStreamsPerson() {
+		return fmt.Errorf("actors other than person is unsupported")
+	}
+	personID := follow.GetActivityStreamsActor().Begin().GetActivityStreamsPerson().GetJSONLDId()
+	actor, err := s.Datastore.GetActorByActorID(ctx, personID.GetIRI().String())
+	if err != nil {
+		return fmt.Errorf("failed to load person: got err=%v", err)
+	}
+	pem, err := s.readPrivateKey(actor.GetActivityStreamsPreferredUsername().GetXMLSchemaString())
 	if err != nil {
 		return err
 	}
@@ -317,7 +329,7 @@ func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to parse username"), http.StatusBadRequest)
 		return
 	}
-	person, err := s.Datastore.GetActor(r.Context(), username)
+	person, err := s.Datastore.GetActorByUsername(r.Context(), username)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("unable to find actor"), http.StatusNotFound)
 		return
@@ -343,7 +355,9 @@ func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) readPrivateKey(actor string) (string, error) {
-	privateKeyPEM, err := os.ReadFile(filepath.Join(s.Keys, fmt.Sprintf("%s_private.pem", actor)))
+	path := filepath.Join(s.Keys, fmt.Sprintf("%s_private.pem", actor))
+	log.Infof("Loading Path=%q", path)
+	privateKeyPEM, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
