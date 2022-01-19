@@ -3,7 +3,6 @@ package user
 import (
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/actor"
-	"go.mongodb.org/mongo-driver/bson"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -13,9 +12,9 @@ const (
 
 // User is used for authentication purposes.
 type User struct {
-	Username       string
-	HashedPassword string
-	Person         actor.Person
+	Username string
+	Password string
+	Person   actor.Person
 }
 
 // NewUser returns a valid user struct.
@@ -34,16 +33,8 @@ func NewUser(username, password string, person actor.Person) (*User, error) {
 		return nil, fmt.Errorf("hashing password failed: got err=%v", err)
 	}
 	return &User{
-		Username:       username,
-		HashedPassword: string(hashedPassword),
-		Person:         person,
+		Username: username,
+		Password: string(hashedPassword),
+		Person:   person,
 	}, nil
-}
-
-func (u *User) BSON() ([]byte, error) {
-	user, err := bson.Marshal(u)
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
 }
