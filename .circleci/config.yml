@@ -5,7 +5,7 @@ version: 2.1
 executors:
   docker-publisher:
     environment:
-      IMAGE_NAME: fediuni
+      IMAGE_NAME: phixyz/fediuni
     docker:
       - image: circleci/buildpack-deps:stretch
 
