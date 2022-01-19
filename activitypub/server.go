@@ -242,13 +242,13 @@ func (s *Server) followUser(ctx context.Context, activity vocab.Type) error {
 }
 
 func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStreamsFollow) error {
-	actorID := follow.GetActivityStreamsActor().Begin().GetIRI()
+	followerID := follow.GetActivityStreamsActor().Begin().GetIRI()
+	if followerID.String() == "" {
+		return fmt.Errorf("follower ID is unspecified: got=%q", followerID)
+	}
+	actorID := follow.GetActivityStreamsObject().Begin().GetIRI()
 	if actorID.String() == "" {
 		return fmt.Errorf("actor ID is unspecified: got=%q", actorID)
-	}
-	followerID := follow.GetActivityStreamsObject().Begin().GetIRI()
-	if followerID.String() == "" {
-		return fmt.Errorf("follower ID is unspecified: got=%q", actorID)
 	}
 	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
 		return fmt.Errorf("failed to add follower to Datastore: err=%v", err)
