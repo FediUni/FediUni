@@ -115,7 +115,7 @@ func (d *Datastore) AddFollowerToActor(ctx context.Context, actorID, followerID 
 	users := d.client.Database("FediUni").Collection("followers")
 	opts := options.Update().SetUpsert(true)
 	log.Infof("Adding Follower=%q to Actor=%q", followerID, actorID)
-	res, err := users.UpdateOne(ctx, bson.D{{"_id", actorID}}, bson.D{{"$push", bson.D{{"followers", followerID}}}}, opts)
+	res, err := users.UpdateOne(ctx, bson.D{{"_id", actorID}}, bson.D{{"$addToSet", bson.D{{"followers", followerID}}}}, opts)
 	if err != nil {
 		return fmt.Errorf("failed to add follower to actor: got err=%v", err)
 	}
