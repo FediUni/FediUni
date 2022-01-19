@@ -30,43 +30,53 @@ func NewDatastore(client *mongo.Client) (*Datastore, error) {
 
 // GetActorByUsername returns an instance of Person from Mongo using Username.
 func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (actor.Person, error) {
-	users := d.client.Database("FediUni").Collection("users")
-	filter := bson.D{{"username", username}}
-	user := &user.User{}
-	if err := users.FindOne(ctx, filter).Decode(&user); err != nil {
+	actors := d.client.Database("FediUni").Collection("actors")
+	filter := bson.D{{"preferredUsername", username}}
+	var actor actor.Person
+	if err := actors.FindOne(ctx, filter).Decode(&actor); err != nil {
 		return nil, err
 	}
-	if user.Person == nil {
-		return nil, fmt.Errorf("unable to load user with username=%q", username)
+	if actor == nil {
+		return nil, fmt.Errorf("unable to load actor with preferredUsername=%q", username)
 	}
-	return user.Person, nil
+	return actor, nil
 }
 
 // GetActorByActorID returns an instance of Person from Mongo using URI.
 func (d *Datastore) GetActorByActorID(ctx context.Context, actorID string) (actor.Person, error) {
-	users := d.client.Database("FediUni").Collection("users")
-	filter := bson.D{{"person.id", actorID}}
-	user := &user.User{}
-	if err := users.FindOne(ctx, filter).Decode(&user); err != nil {
+	actors := d.client.Database("FediUni").Collection("actors")
+	filter := bson.D{{"id", actorID}}
+	var actor actor.Person
+	if err := actors.FindOne(ctx, filter).Decode(&actor); err != nil {
 		return nil, err
 	}
-	if user.Person == nil {
+	if actor == nil {
 		return nil, fmt.Errorf("unable to load actor with ID=%q", actorID)
 	}
-	return user.Person, nil
+	return actor, nil
 }
 
 func (d *Datastore) CreateUser(ctx context.Context, user *user.User) error {
 	users := d.client.Database("FediUni").Collection("users")
-	marshalledUser, err := user.BSON()
-	if err != nil {
-		return err
-	}
-	res, err := users.InsertOne(ctx, marshalledUser)
+	res, err := users.InsertOne(ctx, bson.D{{"username", user.Username}, {"password", user.Password}})
 	if err != nil {
 		return err
 	}
 	log.Infof("Inserted user %q with _id=%q", user.Username, res.InsertedID)
+	actors := d.client.Database("FediUni").Collection("actors")
+	serializedPerson, err := streams.Serialize(user.Person)
+	if err != nil {
+		return fmt.Errorf("failed to serialize user %q: got err=%v", user.Username, err)
+	}
+	m, err := bson.Marshal(serializedPerson)
+	if err != nil {
+		return fmt.Errorf("failed to marshal serialiazed user %q: got err=%v", user.Username, err)
+	}
+	res, err = actors.InsertOne(ctx, m)
+	if err != nil {
+		return err
+	}
+	log.Infof("Inserted actor %q with _id=%q", user.Username, res.InsertedID)
 	return nil
 }
 

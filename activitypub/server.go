@@ -72,11 +72,11 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 
 	s.Router.Get("/", s.homepage)
 	s.Router.Get("/.well-known/webfinger", s.webfinger)
-	s.Router.Get("/actor/{actorID}", s.getActor)
-	s.Router.Get("/actor/{actorID}/inbox", s.getActorInbox)
+	s.Router.Get("/actor/{username}", s.getActor)
+	s.Router.Get("/actor/{username}/inbox", s.getActorInbox)
 	s.Router.Get("/activity/{activityID}", s.getActivity)
-	s.Router.With(validation.Signature).Post("/actor/{actorID}/inbox", s.receiveToActorInbox)
-	s.Router.Get("/actor/{actorID}/outbox", s.getActorOutbox)
+	s.Router.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
+	s.Router.Get("/actor/{username}/outbox", s.getActorOutbox)
 	s.Router.Post("/register", s.createUser)
 	return s, nil
 }
@@ -99,20 +99,20 @@ func (s *Server) homepage(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
-	actorID := chi.URLParam(r, "actorID")
-	if actorID == "" {
-		http.Error(w, "actorID is unspecified", http.StatusBadRequest)
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		http.Error(w, "username is unspecified", http.StatusBadRequest)
 		return
 	}
-	person, err := s.Datastore.GetActorByUsername(r.Context(), actorID)
+	person, err := s.Datastore.GetActorByUsername(r.Context(), username)
 	if err != nil {
-		log.Errorf("failed to get actor with ID=%q: got err=%v", actorID, err)
+		log.Errorf("failed to get actor with ID=%q: got err=%v", username, err)
 		http.Error(w, "failed to load actor", http.StatusNotFound)
 		return
 	}
 	marshalledPerson, err := json.Marshal(person)
 	if err != nil {
-		log.Errorf("failed to get actor with ID=%q: got err=%v", actorID, err)
+		log.Errorf("failed to get actor with ID=%q: got err=%v", username, err)
 		http.Error(w, "failed to load actor", http.StatusInternalServerError)
 	}
 	w.WriteHeader(http.StatusOK)
@@ -175,7 +175,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
-	actorID := chi.URLParam(r, "actorID")
+	actorID := chi.URLParam(r, "username")
 	if actorID == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -305,7 +305,7 @@ func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStream
 }
 
 func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
-	actorID := chi.URLParam(r, "actorID")
+	actorID := chi.URLParam(r, "username")
 	if actorID == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
