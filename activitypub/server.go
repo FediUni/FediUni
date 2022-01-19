@@ -250,9 +250,6 @@ func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStream
 	if actorID.String() == "" {
 		return fmt.Errorf("actor ID is unspecified: got=%q", actorID)
 	}
-	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
-		return fmt.Errorf("failed to add follower to Datastore: err=%v", err)
-	}
 	acceptActivity := streams.NewActivityStreamsAccept()
 	actorProperty := streams.NewActivityStreamsActorProperty()
 	actorProperty.AppendIRI(actorID)
@@ -299,6 +296,9 @@ func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStream
 	res, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
+	}
+	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
+		return fmt.Errorf("failed to add follower to Datastore: err=%v", err)
 	}
 	log.Infof("AcceptActivity successfully POSTed: got StatusCode=%d", res.StatusCode)
 	return nil
