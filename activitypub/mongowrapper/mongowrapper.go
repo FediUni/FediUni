@@ -37,8 +37,9 @@ func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (ac
 		return nil, err
 	}
 	var actor actor.Person
-	resolver, err := streams.NewJSONResolver(ctx, func(ctx context.Context, person vocab.ActivityStreamsPerson) {
+	resolver, err := streams.NewJSONResolver(ctx, func(ctx context.Context, person vocab.ActivityStreamsPerson) error {
 		actor = person
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a Person resolver: got err=%v", err)
@@ -58,8 +59,9 @@ func (d *Datastore) GetActorByActorID(ctx context.Context, actorID string) (acto
 		return nil, err
 	}
 	var actor actor.Person
-	resolver, err := streams.NewJSONResolver(ctx, func(ctx context.Context, person vocab.ActivityStreamsPerson) {
+	resolver, err := streams.NewJSONResolver(ctx, func(ctx context.Context, person vocab.ActivityStreamsPerson) error {
 		actor = person
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a Person resolver: got err=%v", err)
