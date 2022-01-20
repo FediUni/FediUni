@@ -32,12 +32,19 @@ func NewDatastore(client *mongo.Client) (*Datastore, error) {
 func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (actor.Person, error) {
 	actors := d.client.Database("FediUni").Collection("actors")
 	filter := bson.D{{"preferredUsername", username}}
-	var actor actor.Person
-	if err := actors.FindOne(ctx, filter).Decode(&actor); err != nil {
+	var m map[string]interface{}
+	if err := actors.FindOne(ctx, filter).Decode(&m); err != nil {
 		return nil, err
 	}
-	if actor == nil {
-		return nil, fmt.Errorf("unable to load actor with preferredUsername=%q", username)
+	var actor actor.Person
+	resolver, err := streams.NewJSONResolver(ctx, func(ctx context.Context, person vocab.ActivityStreamsPerson) {
+		actor = person
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create a Person resolver: got err=%v", err)
+	}
+	if err = resolver.Resolve(ctx, m); err != nil {
+		return nil, fmt.Errorf("failed to resolve JSON to Person: got err=%v", err)
 	}
 	return actor, nil
 }
@@ -46,12 +53,19 @@ func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (ac
 func (d *Datastore) GetActorByActorID(ctx context.Context, actorID string) (actor.Person, error) {
 	actors := d.client.Database("FediUni").Collection("actors")
 	filter := bson.D{{"id", actorID}}
-	var actor actor.Person
-	if err := actors.FindOne(ctx, filter).Decode(&actor); err != nil {
+	var m map[string]interface{}
+	if err := actors.FindOne(ctx, filter).Decode(&m); err != nil {
 		return nil, err
 	}
-	if actor == nil {
-		return nil, fmt.Errorf("unable to load actor with ID=%q", actorID)
+	var actor actor.Person
+	resolver, err := streams.NewJSONResolver(ctx, func(ctx context.Context, person vocab.ActivityStreamsPerson) {
+		actor = person
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create a Person resolver: got err=%v", err)
+	}
+	if err = resolver.Resolve(ctx, m); err != nil {
+		return nil, fmt.Errorf("failed to resolve JSON to Person: got err=%v", err)
 	}
 	return actor, nil
 }
