@@ -37,7 +37,7 @@ func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (ac
 		return nil, err
 	}
 	var actor actor.Person
-	resolver, err := streams.NewJSONResolver(ctx, func(ctx context.Context, person vocab.ActivityStreamsPerson) error {
+	resolver, err := streams.NewJSONResolver(func(ctx context.Context, person vocab.ActivityStreamsPerson) error {
 		actor = person
 		return nil
 	})
