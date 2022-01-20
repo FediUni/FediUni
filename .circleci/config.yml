@@ -47,7 +47,8 @@ jobs:
     executor: docker-publisher
     steps:
       - checkout
-      - setup_remote_docker
+      - setup_remote_docker:
+          docker_layer_caching: true
       - run:
           name: Build FediUni Docker Image
           command: docker build -t $IMAGE_NAME:latest .
@@ -61,7 +62,8 @@ jobs:
   publish:
     executor: docker-publisher
     steps:
-      - setup_remote_docker
+      - setup_remote_docker:
+          docker_layer_caching: true
       - attach_workspace:
           at: /tmp/workspace
       - run:
