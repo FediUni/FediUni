@@ -275,13 +275,7 @@ func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStream
 	if err != nil {
 		return err
 	}
-	if follow.GetActivityStreamsActor().Empty() {
-		return fmt.Errorf("follow request failed to provide an actor")
-	}
-	if !follow.GetActivityStreamsActor().Begin().IsActivityStreamsPerson() {
-		return fmt.Errorf("actors other than person is unsupported")
-	}
-	personID := follow.GetActivityStreamsActor().Begin().GetActivityStreamsPerson().GetJSONLDId()
+	personID := follow.GetActivityStreamsObject().Begin().GetActivityStreamsPerson().GetJSONLDId()
 	actor, err := s.Datastore.GetActorByActorID(ctx, personID.GetIRI().String())
 	if err != nil {
 		return fmt.Errorf("failed to load person: got err=%v", err)
