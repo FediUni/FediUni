@@ -86,8 +86,6 @@ workflows:
       - buildandtest:
           context: COVERALLS_TOKEN
       - buildimage:
-          requires:
-            - buildandtest
           filters:
             branches:
               only:
@@ -95,6 +93,7 @@ workflows:
       - publish:
           requires:
             - buildimage
+            - buildandtest
           filters:
             branches:
               only:
