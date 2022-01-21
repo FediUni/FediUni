@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -31,7 +32,7 @@ func NewDatastore(client *mongo.Client) (*Datastore, error) {
 // GetActorByUsername returns an instance of Person from Mongo using Username.
 func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (actor.Person, error) {
 	actors := d.client.Database("FediUni").Collection("actors")
-	filter := bson.D{{"preferredUsername", username}}
+	filter := bson.D{{"preferredUsername", strings.ToLower(username)}}
 	var m map[string]interface{}
 	if err := actors.FindOne(ctx, filter).Decode(&m); err != nil {
 		return nil, err
@@ -74,7 +75,7 @@ func (d *Datastore) GetActorByActorID(ctx context.Context, actorID string) (acto
 
 func (d *Datastore) CreateUser(ctx context.Context, user *user.User) error {
 	users := d.client.Database("FediUni").Collection("users")
-	res, err := users.InsertOne(ctx, bson.D{{"username", user.Username}, {"password", user.Password}})
+	res, err := users.InsertOne(ctx, bson.D{{"username", strings.ToLower(user.Username)}, {"password", user.Password}})
 	if err != nil {
 		return err
 	}

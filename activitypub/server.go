@@ -110,13 +110,18 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load actor", http.StatusNotFound)
 		return
 	}
-	marshalledPerson, err := json.Marshal(person)
+	serializedPerson, err := streams.Serialize(person)
 	if err != nil {
-		log.Errorf("failed to get actor with ID=%q: got err=%v", username, err)
+		log.Errorf("failed to serialize actor with ID=%q: got err=%v", username, err)
+		http.Error(w, "failed to load actor", http.StatusInternalServerError)
+	}
+	m, err := json.Marshal(serializedPerson)
+	if err != nil {
+		log.Errorf("failed to marshal actor with ID=%q: got err=%v", username, err)
 		http.Error(w, "failed to load actor", http.StatusInternalServerError)
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledPerson)
+	w.Write(m)
 }
 
 func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
