@@ -14,4 +14,4 @@ FROM alpine:latest
 WORKDIR /
 COPY --from=build /fediuni /fediuni
 EXPOSE 8080
-ENTRYPOINT ["/fediuni"]
+ENTRYPOINT ["/fediuni", "--logtostderr=true"]
