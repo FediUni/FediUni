@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
@@ -107,7 +108,7 @@ func (p *PersonGenerator) NewPerson(username, displayName string) (Person, error
 	publicKeyProperty.AppendW3IDSecurityV1PublicKey(publicKey)
 	person.SetW3IDSecurityV1PublicKey(publicKeyProperty)
 	preferredUsernameProperty := streams.NewActivityStreamsPreferredUsernameProperty()
-	preferredUsernameProperty.SetXMLSchemaString(displayName)
+	preferredUsernameProperty.SetXMLSchemaString(strings.ToLower(displayName))
 	person.SetActivityStreamsPreferredUsername(preferredUsernameProperty)
 	return person, nil
 }
