@@ -49,9 +49,6 @@ jobs:
       - checkout
       - setup_remote_docker:
           docker_layer_caching: true
-      - restore_cache:
-          keys:
-            - go-mod-v4-{{ checksum "go.sum" }}
       - run:
           name: Build FediUni Docker Image
           command: docker build -t $IMAGE_NAME:latest .
