@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/FediUni/FediUni/activitypub/activity"
+	"github.com/FediUni/FediUni/activitypub/follower"
 	"github.com/FediUni/FediUni/activitypub/validation"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
@@ -202,22 +204,21 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to unmarshal request body: got err=%v", err), http.StatusBadRequest)
 		return
 	}
-	activity, err := streams.ToType(ctx, m)
-	log.Infof("Determining Activity Type: got=%q", activity.GetTypeName())
-	switch typeName := activity.GetTypeName(); typeName {
+	activityRequest, err := streams.ToType(ctx, m)
+	log.Infof("Determining Activity Type: got=%q", activityRequest.GetTypeName())
+	switch typeName := activityRequest.GetTypeName(); typeName {
 	case "Follow":
-		log.Infoln("Received Follow Activity")
-		if err := s.followUser(ctx, activity); err != nil {
-			log.Errorf("failed to follow user: err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to handle follow request"), http.StatusInternalServerError)
+		if err := s.follow(ctx, activityRequest); err != nil {
+			log.Errorf("Failed to add follower to user: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to accept follower request"), http.StatusInternalServerError)
 			return
 		}
 	default:
 		log.Errorf("Unsupported Type: got=%q", typeName)
-		http.Error(w, "failed to process activity", http.StatusInternalServerError)
+		http.Error(w, "failed to process activityRequest", http.StatusInternalServerError)
 		return
 	}
-	if err := s.Datastore.AddActivityToSharedInbox(r.Context(), activity, s.URL.String()); err != nil {
+	if err := s.Datastore.AddActivityToSharedInbox(r.Context(), activityRequest, s.URL.String()); err != nil {
 		log.Errorf("failed to add to inbox: got err=%v", err)
 		http.Error(w, "failed to add to inbox", http.StatusInternalServerError)
 		return
@@ -225,28 +226,12 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
-func (s *Server) followUser(ctx context.Context, activity vocab.Type) error {
-	var follow vocab.ActivityStreamsFollow
-	followResolver, err := streams.NewTypeResolver(func(ctx context.Context, f vocab.ActivityStreamsFollow) error {
-		follow = f
-		return nil
-	})
+func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
+	log.Infoln("Received Follow Activity")
+	follow, err := follower.ParseFollowRequest(ctx, activityRequest)
 	if err != nil {
-		return fmt.Errorf("failed to create TypeResolver: got err=%v", err)
+		return fmt.Errorf("failed to parse follow activityRequest: got err=%v", err)
 	}
-	err = followResolver.Resolve(ctx, activity)
-	if err != nil {
-		return fmt.Errorf("failed to resolve type to Follow activity: got err=%v", err)
-	}
-	log.Infoln("Successfully resolved Type to ActivityStreamsFollow")
-	if err := s.acceptFollower(ctx, follow); err != nil {
-		return err
-	}
-	log.Infoln("Successfully Accepted Follower!")
-	return nil
-}
-
-func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStreamsFollow) error {
 	followerID := follow.GetActivityStreamsActor().Begin().GetIRI()
 	if followerID.String() == "" {
 		return fmt.Errorf("follower ID is unspecified: got=%q", followerID)
@@ -255,49 +240,40 @@ func (s *Server) acceptFollower(ctx context.Context, follow vocab.ActivityStream
 	if actorID.String() == "" {
 		return fmt.Errorf("actor ID is unspecified: got=%q", actorID)
 	}
-	acceptActivity := streams.NewActivityStreamsAccept()
-	actorProperty := streams.NewActivityStreamsActorProperty()
-	actorProperty.AppendIRI(actorID)
-	acceptActivity.SetActivityStreamsActor(actorProperty)
-	objectProperty := streams.NewActivityStreamsObjectProperty()
-	objectProperty.AppendActivityStreamsFollow(follow)
-	acceptActivity.SetActivityStreamsObject(objectProperty)
-	m, err := streams.Serialize(acceptActivity)
-	if err != nil {
-		return err
-	}
-	marshalledActivity, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	log.Infof("Sending Accept Activity to followerID=%q", followerID)
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.URL.String(), bytes.NewBuffer(marshalledActivity))
-	if err != nil {
-		return err
-	}
-	personID := follow.GetActivityStreamsObject().Begin().GetActivityStreamsPerson().GetJSONLDId()
-	actor, err := s.Datastore.GetActorByActorID(ctx, personID.GetIRI().String())
+	accept := follower.PrepareAcceptActivity(follow, actorID)
+	marshalledActivity, err := activity.JSON(accept)
 	if err != nil {
 		return fmt.Errorf("failed to load person: got err=%v", err)
 	}
-	pem, err := s.readPrivateKey(actor.GetActivityStreamsPreferredUsername().GetXMLSchemaString())
+	if err := s.Datastore.AddActivityToSharedInbox(ctx, accept, s.URL.String()); err != nil {
+		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.URL.String(), bytes.NewBuffer(marshalledActivity))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create Accept HTTP request: got err=%v", err)
+	}
+	person, err := s.Datastore.GetActorByActorID(ctx, actorID.String())
+	if err != nil {
+		return fmt.Errorf("failed to load person: got err=%v", err)
+	}
+	pem, err := s.readPrivateKey(person.GetActivityStreamsPreferredUsername().GetXMLSchemaString())
+	if err != nil {
+		return fmt.Errorf("failed to read private key: got err=%v", err)
 	}
 	privateKey, err := validation.ParsePrivateKeyFromPEMBlock(pem)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read private key: got err=%v", err)
 	}
 	request, err = validation.SignRequestWithDigest(request, s.URL, actorID.String(), privateKey)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to sign accept request: got err=%v", err)
+	}
+	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
+		return fmt.Errorf("failed to add follower to actor: got err=%v", err)
 	}
 	res, err := http.DefaultClient.Do(request)
 	if err != nil {
-		return err
-	}
-	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
-		return fmt.Errorf("failed to add follower to Datastore: err=%v", err)
+		return fmt.Errorf("failed to send accept request: got err=%v", err)
 	}
 	log.Infof("AcceptActivity successfully POSTed: got StatusCode=%d", res.StatusCode)
 	return nil
