@@ -10,7 +10,6 @@ import (
 	"github.com/FediUni/FediUni/activitypub/follower"
 	"github.com/FediUni/FediUni/activitypub/undo"
 	"github.com/FediUni/FediUni/activitypub/validation"
-	"github.com/go-fed/activity/pub"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"io/ioutil"
@@ -306,32 +305,10 @@ func (s *Server) undo(ctx context.Context, activityRequest vocab.Type) error {
 	if object == nil {
 		return fmt.Errorf("failed to receive Object in Undo activity body: got %v", object)
 	}
-	objectID, err := pub.ToId(object.Begin())
-	if err != nil {
-		return fmt.Errorf("failed to determine object ID: got err=%v", err)
-	}
-	activity, err := s.Client.FetchRemoteActivity(ctx, objectID)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve remote Activity with objectID=%q: got err=%v", objectID, err)
-	}
-	var follow vocab.ActivityStreamsFollow
-	var like vocab.ActivityStreamsLike
-	var block vocab.ActivityStreamsBlock
-	undoResolver, err := streams.NewTypeResolver(func(ctx context.Context, f vocab.ActivityStreamsFollow) error {
-		follow = f
-		return nil
-	}, func(ctx context.Context, l vocab.ActivityStreamsLike) error {
-		like = l
-		return nil
-	}, func(ctx context.Context, b vocab.ActivityStreamsBlock) error {
-		block = b
-		return nil
-	})
-	if err := undoResolver.Resolve(ctx, activity); err != nil {
-		return err
-	}
-	switch {
-	case follow != nil:
+	object.Begin().IsActivityStreamsFollow()
+	switch iter := object.Begin(); {
+	case iter.IsActivityStreamsFollow():
+		follow := object.Begin().GetActivityStreamsFollow()
 		followerID := follow.GetActivityStreamsActor().Begin().GetIRI()
 		if followerID.String() == "" {
 			return fmt.Errorf("follower ID is unspecified: got=%q", followerID)
@@ -343,9 +320,9 @@ func (s *Server) undo(ctx context.Context, activityRequest vocab.Type) error {
 		if err := s.Datastore.RemoveFollowerFromActor(ctx, actorID.String(), followerID.String()); err != nil {
 			return fmt.Errorf("failed to remove follower: got err=%v", err)
 		}
-	case like != nil:
+	case iter.IsActivityStreamsLike():
 		return fmt.Errorf("undo like activity support is unimplemented")
-	case block != nil:
+	case iter.IsActivityStreamsBlock():
 		return fmt.Errorf("undo block activity support is unimplemented")
 	default:
 		return fmt.Errorf("activity is unsupported in the ActivityPub specification")
