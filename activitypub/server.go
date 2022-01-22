@@ -263,6 +263,7 @@ func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.URL.String(), bytes.NewBuffer(marshalledActivity))
+	request.Header.Add("Content-Type", `application/ld+json; profile="https://www.w3.org/ns/activitystreams"`)
 	if err != nil {
 		return fmt.Errorf("failed to create Accept HTTP request: got err=%v", err)
 	}
