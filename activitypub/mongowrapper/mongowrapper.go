@@ -60,7 +60,7 @@ func (d *Datastore) GetActorByActorID(ctx context.Context, actorID string) (acto
 		return nil, err
 	}
 	var actor actor.Person
-	resolver, err := streams.NewJSONResolver(ctx, func(ctx context.Context, person vocab.ActivityStreamsPerson) error {
+	resolver, err := streams.NewJSONResolver(func(ctx context.Context, person vocab.ActivityStreamsPerson) error {
 		actor = person
 		return nil
 	})
