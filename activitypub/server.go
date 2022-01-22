@@ -291,7 +291,7 @@ func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 		return fmt.Errorf("failed to send accept request: got err=%v", err)
 	}
 	body, _ := ioutil.ReadAll(res.Body)
-	log.Infof("AcceptActivity successfully POSTed: got=%v StatusCode=%d", body, res.StatusCode)
+	log.Infof("AcceptActivity successfully POSTed: got=%v StatusCode=%d", string(body), res.StatusCode)
 	return nil
 }
 
