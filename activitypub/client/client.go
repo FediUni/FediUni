@@ -22,6 +22,7 @@ func (c *Client) FetchRemoteActivity(ctx context.Context, iri *url.URL) (vocab.T
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Accept", "application/activity+json")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
