@@ -213,6 +213,12 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to accept follower request"), http.StatusInternalServerError)
 			return
 		}
+	case "Undo":
+		if err := s.undo(ctx, activityRequest); err != nil {
+			log.Errorf("Failed to undo specified Activity: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to undo activity"), http.StatusInternalServerError)
+			return
+		}
 	default:
 		log.Errorf("Unsupported Type: got=%q", typeName)
 		http.Error(w, "failed to process activityRequest", http.StatusInternalServerError)
@@ -226,6 +232,10 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
+// Follow allows the actor to follow the requested person on this instance.
+// Currently follow automatically accepts all incoming follow requests, but
+// users should be able to confirm and deny follow requests before the Accept
+// activity is sent.
 func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 	log.Infoln("Received Follow Activity")
 	follow, err := follower.ParseFollowRequest(ctx, activityRequest)
@@ -277,6 +287,33 @@ func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 	}
 	log.Infof("AcceptActivity successfully POSTed: got StatusCode=%d", res.StatusCode)
 	return nil
+}
+
+// Undo can only reverse the effects of Like, Follow, or Block Activities.
+// See: https://www.w3.org/TR/activitypub/#undo-activity-outbox
+func (s *Server) undo(ctx context.Context, activityRequest vocab.Type) error {
+	log.Infoln("Received Undo Activity")
+	var undo vocab.ActivityStreamsUndo
+	undoResolver, err := streams.NewTypeResolver(func(ctx context.Context, u vocab.ActivityStreamsUndo) error {
+		undo = u
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create resolver: got err=%v", err)
+	}
+	if err := undoResolver.Resolve(ctx, activityRequest); err != nil {
+		return fmt.Errorf("failed to resolve activity to Undo activity: got err=%v", err)
+	}
+	switch typeName := undo.GetTypeName(); typeName {
+	case "Follow":
+		return fmt.Errorf("follow activity support is unimplemented")
+	case "Like":
+		return fmt.Errorf("like activity support is unimplemented")
+	case "Block":
+		return fmt.Errorf("block activity support is unimplemented")
+	default:
+		return fmt.Errorf("%q activity is unsupported in the ActivityPub specification", typeName)
+	}
 }
 
 func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
