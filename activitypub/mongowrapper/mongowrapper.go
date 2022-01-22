@@ -104,7 +104,7 @@ func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab
 	if err != nil {
 		return err
 	}
-	if !activity.GetJSONLDId().HasAny() {
+	if activity.GetJSONLDId() == nil {
 		idProperty := streams.NewJSONLDIdProperty()
 		idProperty.Set(id)
 		activity.SetJSONLDId(idProperty)
