@@ -18,6 +18,6 @@ func addDigest(request *http.Request) (*http.Request, error) {
 	}
 	hash := sha256.Sum256(body)
 	digest := base64.StdEncoding.EncodeToString(hash[:])
-	request.Header.Set("Digest", digest)
+	request.Header.Set("Digest", fmt.Sprintf("SHA-256=%s", digest))
 	return request, nil
 }
