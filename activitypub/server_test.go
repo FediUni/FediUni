@@ -62,6 +62,10 @@ func (d *TestDatastore) AddFollowerToActor(context.Context, string, string) erro
 	return fmt.Errorf("AddFollowerToActor() is unimplemented")
 }
 
+func (d *TestDatastore) RemoveFollowerFromActor(ctx context.Context, actorID, followerID string) error {
+	return fmt.Errorf("RemoveFollowerFromActor() is unimplemented")
+}
+
 type TestKeyGenerator struct{}
 
 func (g *TestKeyGenerator) GenerateKeyPair() (string, string, error) {

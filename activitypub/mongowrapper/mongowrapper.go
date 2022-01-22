@@ -149,3 +149,14 @@ func (d *Datastore) AddFollowerToActor(ctx context.Context, actorID, followerID 
 	log.Infof("Inserted Document: got=%v", res)
 	return nil
 }
+
+func (d *Datastore) RemoveFollowerFromActor(ctx context.Context, actorID, followerID string) error {
+	users := d.client.Database("FediUni").Collection("followers")
+	log.Infof("Removing Follower=%q from Actor=%q", followerID, actorID)
+	res, err := users.UpdateOne(ctx, bson.D{{"_id", actorID}}, bson.D{{"$pull", bson.D{{"followers", followerID}}}})
+	if err != nil {
+		return fmt.Errorf("failed to remove follower from actor: got err=%v", err)
+	}
+	log.Infof("Inserted Document: got=%v", res)
+	return nil
+}

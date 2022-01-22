@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/activity"
+	"github.com/FediUni/FediUni/activitypub/client"
 	"github.com/FediUni/FediUni/activitypub/follower"
+	"github.com/FediUni/FediUni/activitypub/undo"
 	"github.com/FediUni/FediUni/activitypub/validation"
+	"github.com/go-fed/activity/pub"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"io/ioutil"
@@ -33,6 +36,7 @@ type Datastore interface {
 	CreateUser(context.Context, *user.User) error
 	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
 	AddFollowerToActor(context.Context, string, string) error
+	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
 }
 
@@ -42,6 +46,7 @@ type Server struct {
 	Router       *chi.Mux
 	Datastore    Datastore
 	KeyGenerator actor.KeyGenerator
+	Client       *client.Client
 }
 
 type WebfingerResponse struct {
@@ -233,7 +238,7 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 }
 
 // Follow allows the actor to follow the requested person on this instance.
-// Currently follow automatically accepts all incoming follow requests, but
+// Currently, follow automatically accepts all incoming follow requests, but
 // users should be able to confirm and deny follow requests before the Accept
 // activity is sent.
 func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
@@ -293,27 +298,59 @@ func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 // See: https://www.w3.org/TR/activitypub/#undo-activity-outbox
 func (s *Server) undo(ctx context.Context, activityRequest vocab.Type) error {
 	log.Infoln("Received Undo Activity")
-	var undo vocab.ActivityStreamsUndo
-	undoResolver, err := streams.NewTypeResolver(func(ctx context.Context, u vocab.ActivityStreamsUndo) error {
-		undo = u
+	undoRequest, err := undo.ParseUndoRequest(ctx, activityRequest)
+	if err != nil {
+		return fmt.Errorf("failed to parse Undo activity: got err=%v", err)
+	}
+	object := undoRequest.GetActivityStreamsObject()
+	if object == nil {
+		return fmt.Errorf("failed to receive Object in Undo activity body: got %v", object)
+	}
+	objectID, err := pub.ToId(object.Begin())
+	if err != nil {
+		return fmt.Errorf("failed to determine object ID: got err=%v", err)
+	}
+	activity, err := s.Client.FetchRemoteActivity(ctx, objectID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve remote Activity with objectID=%q: got err=%v", objectID, err)
+	}
+	var follow vocab.ActivityStreamsFollow
+	var like vocab.ActivityStreamsLike
+	var block vocab.ActivityStreamsBlock
+	undoResolver, err := streams.NewTypeResolver(func(ctx context.Context, f vocab.ActivityStreamsFollow) error {
+		follow = f
+		return nil
+	}, func(ctx context.Context, l vocab.ActivityStreamsLike) error {
+		like = l
+		return nil
+	}, func(ctx context.Context, b vocab.ActivityStreamsBlock) error {
+		block = b
 		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("failed to create resolver: got err=%v", err)
+	if err := undoResolver.Resolve(ctx, activity); err != nil {
+		return err
 	}
-	if err := undoResolver.Resolve(ctx, activityRequest); err != nil {
-		return fmt.Errorf("failed to resolve activity to Undo activity: got err=%v", err)
-	}
-	switch typeName := undo.GetTypeName(); typeName {
-	case "Follow":
-		return fmt.Errorf("follow activity support is unimplemented")
-	case "Like":
-		return fmt.Errorf("like activity support is unimplemented")
-	case "Block":
-		return fmt.Errorf("block activity support is unimplemented")
+	switch {
+	case follow != nil:
+		followerID := follow.GetActivityStreamsActor().Begin().GetIRI()
+		if followerID.String() == "" {
+			return fmt.Errorf("follower ID is unspecified: got=%q", followerID)
+		}
+		actorID := follow.GetActivityStreamsObject().Begin().GetIRI()
+		if actorID.String() == "" {
+			return fmt.Errorf("actor ID is unspecified: got=%q", actorID)
+		}
+		if err := s.Datastore.RemoveFollowerFromActor(ctx, actorID.String(), followerID.String()); err != nil {
+			return fmt.Errorf("failed to remove follower: got err=%v", err)
+		}
+	case like != nil:
+		return fmt.Errorf("undo like activity support is unimplemented")
+	case block != nil:
+		return fmt.Errorf("undo block activity support is unimplemented")
 	default:
-		return fmt.Errorf("%q activity is unsupported in the ActivityPub specification", typeName)
+		return fmt.Errorf("activity is unsupported in the ActivityPub specification")
 	}
+	return nil
 }
 
 func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
