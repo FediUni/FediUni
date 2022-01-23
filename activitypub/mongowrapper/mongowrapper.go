@@ -136,12 +136,12 @@ func (d *Datastore) GetActivity(ctx context.Context, activityID, baseURL string)
 		return nil, fmt.Errorf("unable to load activity with _id=%q", activityID)
 	}
 	var activity vocab.Type
-	resolver, err := streams.NewJSONResolver(func(c context.Context, t vocab.Type) error {
+	resolver, err := streams.NewJSONResolver(func(c context.Context, t vocab.ActivityStreamsObject) error {
 		activity = t
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create JSON vocab.Type resolver: got err=%v", err)
+		return nil, fmt.Errorf("failed to create JSON vocab.ActivityStreamsObject resolver: got err=%v", err)
 	}
 	if err := resolver.Resolve(ctx, m); err != nil {
 		return nil, fmt.Errorf("failed to resolve Activity: got err=%v", err)
