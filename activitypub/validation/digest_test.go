@@ -83,7 +83,7 @@ func TestDigest(t *testing.T) {
 				t.Fatalf("failed to create request: got err=%v", err)
 			}
 			privateKey, _ := ParsePrivateKeyFromPEMBlock(keyGenerator.PrivateKey.String())
-			request, err = SignRequestWithDigest(request, serverURL, fmt.Sprintf("%s/actor/brandonstark", serverURL), privateKey)
+			request, err = SignRequestWithDigest(request, serverURL, fmt.Sprintf("%s/actor/brandonstark", serverURL), privateKey, body.Bytes())
 			if err != nil {
 				t.Fatalf("SignRequestWithDigest(): Unexpected error returned: got err=%v", err)
 			}

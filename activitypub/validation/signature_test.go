@@ -89,13 +89,14 @@ func TestValidate(t *testing.T) {
 			server := httptest.NewServer(r)
 			serverURL, _ := url.Parse(server.URL)
 			defer server.Close()
-			request, _ := http.NewRequest("POST", fmt.Sprintf("%s/actor/brandonstark/inbox", serverURL), bytes.NewBuffer([]byte("testbody")))
+			body := []byte("testbody")
+			request, _ := http.NewRequest("POST", fmt.Sprintf("%s/actor/brandonstark/inbox", serverURL), bytes.NewBuffer(body))
 			block, _ := pem.Decode(keyGenerator.PrivateKey.Bytes())
 			if block == nil {
 				t.Errorf("failed to parse PEM block")
 			}
 			parsedPrivateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-			request, err = SignRequestWithDigest(request, serverURL, fmt.Sprintf("%s/actor/brandonstark#main-key", serverURL.String()), parsedPrivateKey)
+			request, err = SignRequestWithDigest(request, serverURL, fmt.Sprintf("%s/actor/brandonstark#main-key", serverURL.String()), parsedPrivateKey, body)
 			if err != nil {
 				t.Fatalf("failed to create signed request: got err=%v", err)
 			}

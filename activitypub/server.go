@@ -306,7 +306,7 @@ func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 	if err != nil {
 		return fmt.Errorf("failed to read private key: got err=%v", err)
 	}
-	request, err = validation.SignRequestWithDigest(request, s.URL, actorID.String(), privateKey)
+	request, err = validation.SignRequestWithDigest(request, s.URL, actorID.String(), privateKey, marshalledActivity)
 	if err != nil {
 		return fmt.Errorf("failed to sign accept request: got err=%v", err)
 	}
