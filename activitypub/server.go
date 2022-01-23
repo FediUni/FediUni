@@ -69,6 +69,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 		Keys:         keys,
 		Datastore:    datastore,
 		KeyGenerator: keyGenerator,
+		Client:       client.NewClient(),
 	}
 	s.Router = chi.NewRouter()
 
