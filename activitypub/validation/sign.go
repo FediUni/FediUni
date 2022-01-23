@@ -1,52 +1,34 @@
 package validation
 
 import (
-	"crypto"
-	"crypto/rand"
+	"bytes"
 	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/base64"
-	"fmt"
-	log "github.com/golang/glog"
+	"github.com/go-fed/httpsig"
+	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
 func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateKey *rsa.PrivateKey) (*http.Request, error) {
-	if keyID == "" {
-		return nil, fmt.Errorf("keyID must be specified, got=%q", keyID)
-	}
-	if url.Host == "" {
-		return nil, fmt.Errorf("URL host must be specifed, got=%q", url.String())
-	}
-	log.Infoln("Calculating Digest...")
-	r, err := addDigest(r)
-	if err != nil {
-		return nil, err
-	}
-	log.Infoln("Calculating Request Signature")
 	httpDate := time.Now().UTC().Format(http.TimeFormat)
 	host := url.Host
 	r.Header.Set("Host", host)
 	r.Header.Set("Date", httpDate)
-	headers := []string{"(request-target)"}
-	pairs := []string{fmt.Sprintf("(request-target): %s %s", strings.ToLower(r.Method), r.URL.Path)}
-	for name, value := range r.Header {
-		headers = append(headers, strings.ToLower(name))
-		pairs = append(pairs, fmt.Sprintf("%s: %s", strings.ToLower(name), value[0]))
-	}
-	toSign := strings.Join(pairs, "\n")
-	log.Infof("Signing %q", toSign)
-	hash := sha256.Sum256([]byte(toSign))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hash[:])
+	prefs := []httpsig.Algorithm{httpsig.RSA_SHA512, httpsig.RSA_SHA256}
+	// The "Date" and "Digest" headers must already be set on r, as well as r.URL.
+	headersToSign := []string{httpsig.RequestTarget, "host", "date", "digest"}
+	signer, _, err := httpsig.NewSigner(prefs, httpsig.DigestSha256, headersToSign, httpsig.Signature)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create signature: got err=%v", signature)
+		return nil, err
 	}
-	encodedSignature := base64.StdEncoding.EncodeToString(signature)
-	header := fmt.Sprintf("keyId=%q,headers=%q,signature=%q", keyID, strings.Join(headers, " "), encodedSignature)
-	r.Header.Set("Signature", header)
-	log.Infof("Successfully Determined HTTP Request Signature=%q", header)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := signer.SignRequest(privateKey, keyID, r, body); err != nil {
+		return nil, err
+	}
+	r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
 	return r, nil
 }

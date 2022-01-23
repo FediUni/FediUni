@@ -2,15 +2,12 @@ package validation
 
 import (
 	"context"
-	"crypto"
-	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
+	"github.com/go-fed/httpsig"
 	log "github.com/golang/glog"
 	"io/ioutil"
 	"net/http"
@@ -24,18 +21,6 @@ func Signature(next http.Handler) http.Handler {
 		if err != nil {
 			log.Errorf("failed to parse validation, got err=%v", err)
 			http.Error(w, "failed to parse validation", http.StatusBadRequest)
-			return
-		}
-		encodedSignature := signatureHeader["signature"]
-		if encodedSignature == "" {
-			log.Errorf("signature not provided")
-			http.Error(w, "signature not provided", http.StatusBadRequest)
-			return
-		}
-		signature, err := base64.StdEncoding.DecodeString(encodedSignature)
-		if err != nil {
-			log.Errorf("failed to decode signature, got err=%v", err)
-			http.Error(w, "failed to parse signature", http.StatusBadRequest)
 			return
 		}
 		keyID := signatureHeader["keyId"]
@@ -98,41 +83,18 @@ func Signature(next http.Handler) http.Handler {
 			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
 			return
 		}
-		if publicKey = person.GetW3IDSecurityV1PublicKey().At(0).Get(); publicKey == nil {
+		if publicKey = person.GetW3IDSecurityV1PublicKey().Begin().Get(); publicKey == nil {
 			log.Errorf("Public Key is not set! got=%v", publicKey)
 			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
 			return
 		}
-		pairs := []string{}
-		for _, header := range strings.Split(signatureHeader["headers"], " ") {
-			log.Infof("Checking Header=%q", header)
-			var pair string
-			switch headerName := strings.ToLower(header); headerName {
-			// (request-target) is a fake header that must be constructed using
-			// HTTP method and the path.
-			case "(request-target)":
-				pair = fmt.Sprintf("%s: %s %s", headerName, strings.ToLower(r.Method), r.URL.Path)
-			// Host header is removed from incoming requests and promoted to a
-			// field (See: https://pkg.go.dev/net/http#Request).
-			case "host":
-				pair = fmt.Sprintf("%s: %s", headerName, r.Host)
-			default:
-				pair = fmt.Sprintf("%s: %s", headerName, r.Header.Get(header))
-			}
-			pairs = append(pairs, pair)
-		}
-		toCompare := strings.Join(pairs, "\n")
-		log.Infoln("Parsing Public Key from PEM block...")
-		parsedKey, err := parsePublicKeyFromPEMBlock(publicKey.GetW3IDSecurityV1PublicKeyPem().Get())
+		verifier, err := httpsig.NewVerifier(r)
 		if err != nil {
-			log.Errorf("failed to parse public key from block, got err=%v", err)
+			log.Errorf("failed to create verifier: got err=%v", err)
 			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
 			return
 		}
-		log.Infoln("Public Key successfully parsed.")
-		hashed := sha256.Sum256([]byte(toCompare))
-		log.Infoln("Verifying Signature...")
-		if err := rsa.VerifyPKCS1v15(parsedKey, crypto.SHA256, hashed[:], signature); err != nil {
+		if verifier.Verify(publicKey, httpsig.RSA_SHA256); err != nil {
 			log.Errorf("failed to verify the provided signature, got err=%v", err)
 			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
 			return
