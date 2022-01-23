@@ -141,7 +141,13 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load activity", http.StatusNotFound)
 		return
 	}
-	marshalledActivity, err := json.Marshal(activity)
+	serializedActivity, err := streams.Serialize(activity)
+	if err != nil {
+		log.Errorf("failed to serialize activity with ID=%q: got err=%v", activityID, err)
+		http.Error(w, "failed to load activity", http.StatusNotFound)
+		return
+	}
+	marshalledActivity, err := json.Marshal(serializedActivity)
 	if err != nil {
 		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
 		http.Error(w, "failed to load activity", http.StatusNotFound)

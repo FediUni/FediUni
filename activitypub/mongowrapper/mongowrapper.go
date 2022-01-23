@@ -128,12 +128,23 @@ func (d *Datastore) GetActivity(ctx context.Context, activityID, baseURL string)
 		return nil, fmt.Errorf("failed to parse ObjectID from Hex=%q: got err=%v", activityID, err)
 	}
 	filter := bson.D{{"_id", objectID}, {"id", fmt.Sprintf("%s/activity/%s", baseURL, activityID)}}
-	var activity vocab.Type
-	if err := activities.FindOne(ctx, filter).Decode(&activity); err != nil {
+	var m map[string]interface{}
+	if err := activities.FindOne(ctx, filter).Decode(&m); err != nil {
 		return nil, err
 	}
-	if activity == nil {
-		return nil, fmt.Errorf("unable to load user with _id=%q", activityID)
+	if m == nil {
+		return nil, fmt.Errorf("unable to load activity with _id=%q", activityID)
+	}
+	var activity vocab.Type
+	resolver, err := streams.NewJSONResolver(func(c context.Context, t vocab.Type) error {
+		activity = t
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create JSON vocab.Type resolver: got err=%v", err)
+	}
+	if err := resolver.Resolve(ctx, m); err != nil {
+		return nil, fmt.Errorf("failed to resolve Activity: got err=%v", err)
 	}
 	return activity, nil
 }
