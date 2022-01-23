@@ -17,7 +17,7 @@ func NewClient() *Client {
 	return &Client{}
 }
 
-func (c *Client) FetchRemoteActivity(ctx context.Context, iri *url.URL) (vocab.Type, error) {
+func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL) (vocab.Type, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, iri.String(), nil)
 	if err != nil {
 		return nil, err
