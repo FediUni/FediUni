@@ -314,6 +314,7 @@ func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 		return fmt.Errorf("failed to add follower to actor: got err=%v", err)
 	}
 	log.Infof("Sending Accept Request to %q", remoteActor.GetActivityStreamsInbox().GetIRI().String())
+	log.Infof("Accept Request Body=%v", marshalledActivity)
 	res, err := http.DefaultClient.Do(request)
 	defer res.Body.Close()
 	if err != nil {
