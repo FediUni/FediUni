@@ -81,7 +81,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	s.Router.Get("/actor/{username}", s.getActor)
 	s.Router.Get("/actor/{username}/inbox", s.getActorInbox)
 	s.Router.Get("/activity/{activityID}", s.getActivity)
-	s.Router.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
+	s.Router.With(validation.Digest).With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	s.Router.Get("/actor/{username}/outbox", s.getActorOutbox)
 	s.Router.Post("/register", s.createUser)
 	return s, nil
