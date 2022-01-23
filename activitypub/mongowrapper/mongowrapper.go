@@ -99,7 +99,7 @@ func (d *Datastore) CreateUser(ctx context.Context, user *user.User) error {
 func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab.Type, baseURL string) error {
 	activities := d.client.Database("FediUni").Collection("activities")
 	objectID := primitive.NewObjectID()
-	id, err := url.Parse(fmt.Sprintf("%s/activity/%s", baseURL, objectID.String()))
+	id, err := url.Parse(fmt.Sprintf("%s/activity/%s", baseURL, objectID.Hex()))
 	if err != nil {
 		return err
 	}
@@ -112,6 +112,7 @@ func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab
 	if err != nil {
 		return err
 	}
+	marshalledActivity["_id"] = id
 	res, err := activities.InsertOne(ctx, marshalledActivity)
 	if err != nil {
 		return err
