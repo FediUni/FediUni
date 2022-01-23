@@ -26,7 +26,6 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	if err != nil {
 		return nil, err
 	}
-	log.Infoln("Successfully Determined Digest")
 	log.Infoln("Calculating Request Signature")
 	httpDate := time.Now().UTC().Format(http.TimeFormat)
 	host := url.Host
