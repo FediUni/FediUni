@@ -88,13 +88,22 @@ func Signature(next http.Handler) http.Handler {
 			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
 			return
 		}
+		parsedKey, err := parsePublicKeyFromPEMBlock(publicKey.GetW3IDSecurityV1PublicKeyPem().Get())
+		if err != nil {
+			log.Errorf("failed to parse public key from block, got err=%v", err)
+			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
+			return
+		}
+		log.Infoln("Public Key successfully parsed.")
 		verifier, err := httpsig.NewVerifier(r)
 		if err != nil {
 			log.Errorf("failed to create verifier: got err=%v", err)
 			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
 			return
 		}
-		if verifier.Verify(publicKey, httpsig.RSA_SHA256); err != nil {
+		// Ensure Host Header is set.
+		r.Header.Set("Host", r.Host)
+		if err := verifier.Verify(parsedKey, httpsig.RSA_SHA256); err != nil {
 			log.Errorf("failed to verify the provided signature, got err=%v", err)
 			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
 			return

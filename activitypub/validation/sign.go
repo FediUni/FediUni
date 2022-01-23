@@ -15,7 +15,7 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	host := url.Host
 	r.Header.Set("Host", host)
 	r.Header.Set("Date", httpDate)
-	prefs := []httpsig.Algorithm{httpsig.RSA_SHA512, httpsig.RSA_SHA256}
+	prefs := []httpsig.Algorithm{httpsig.RSA_SHA256}
 	// The "Date" and "Digest" headers must already be set on r, as well as r.URL.
 	headersToSign := []string{httpsig.RequestTarget, "host", "date", "digest"}
 	signer, _, err := httpsig.NewSigner(prefs, httpsig.DigestSha256, headersToSign, httpsig.Signature)

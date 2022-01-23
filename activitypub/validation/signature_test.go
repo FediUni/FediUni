@@ -1,12 +1,8 @@
 package validation
 
 import (
-	"crypto"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
+	"bytes"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -17,9 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
-	"time"
 )
 
 func TestProcessSignatureHeader(t *testing.T) {
@@ -95,29 +89,16 @@ func TestValidate(t *testing.T) {
 			server := httptest.NewServer(r)
 			serverURL, _ := url.Parse(server.URL)
 			defer server.Close()
-			request, _ := http.NewRequest("POST", fmt.Sprintf("%s/actor/brandonstark/inbox", serverURL), nil)
-			httpDate := time.Now().UTC().Format(http.TimeFormat)
-			request.Header.Set("Host", serverURL.Host)
-			request.Header.Set("Date", httpDate)
-			headers := []string{"(request-target)"}
-			pairs := []string{"(request-target): post /actor/brandonstark/inbox"}
-			for name, value := range request.Header {
-				headers = append(headers, strings.ToLower(name))
-				pairs = append(pairs, fmt.Sprintf("%s: %s", strings.ToLower(name), value[0]))
-			}
-			toSign := strings.Join(pairs, "\n")
-			hash := sha256.Sum256([]byte(toSign))
+			request, _ := http.NewRequest("POST", fmt.Sprintf("%s/actor/brandonstark/inbox", serverURL), bytes.NewBuffer([]byte("testbody")))
 			block, _ := pem.Decode(keyGenerator.PrivateKey.Bytes())
 			if block == nil {
 				t.Errorf("failed to parse PEM block")
 			}
 			parsedPrivateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-			signature, err := rsa.SignPKCS1v15(rand.Reader, parsedPrivateKey, crypto.SHA256, hash[:])
+			request, err = SignRequestWithDigest(request, serverURL, fmt.Sprintf("%s/actor/brandonstark#main-key", serverURL.String()), parsedPrivateKey)
 			if err != nil {
-				t.Errorf("failed to create validation: got err=%v", signature)
+				t.Fatalf("failed to create signed request: got err=%v", err)
 			}
-			header := fmt.Sprintf("keyId=%q,headers=%q,signature=%q", fmt.Sprintf("%s/actor/brandonstark#main-key", serverURL.String()), strings.Join(headers, " "), base64.StdEncoding.EncodeToString(signature))
-			request.Header.Set("Signature", header)
 			res, err := server.Client().Do(request)
 			if err != nil {
 				t.Errorf("Unexpected error returned: got err=%v", err)
