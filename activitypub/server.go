@@ -273,7 +273,25 @@ func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 	if err := s.Datastore.AddActivityToSharedInbox(ctx, accept, s.URL.String()); err != nil {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.URL.String(), bytes.NewBuffer(marshalledActivity))
+	object, err := s.Client.FetchRemoteObject(ctx, followerID)
+	if err != nil {
+		return err
+	}
+	var remoteActor actor.Person
+	resolver, err := streams.NewTypeResolver(func(ctx context.Context, person vocab.ActivityStreamsPerson) error {
+		remoteActor = person
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create a Person resolver: got err=%v", err)
+	}
+	if err = resolver.Resolve(ctx, object); err != nil {
+		return fmt.Errorf("failed to resolve vocab.Type to Person: got err=%v", err)
+	}
+	if remoteActor.GetActivityStreamsInbox() == nil {
+		return fmt.Errorf("invalid actor=%q retrieved! inbox property does not exist", followerID.String())
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, remoteActor.GetActivityStreamsInbox().GetIRI().String(), bytes.NewBuffer(marshalledActivity))
 	request.Header.Add("Content-Type", "application/ld+json")
 	if err != nil {
 		return fmt.Errorf("failed to create Accept HTTP request: got err=%v", err)
