@@ -14,7 +14,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"net/url"
 	"strings"
-	"time"
 )
 
 // Datastore wraps the MongoDB client and handles MongoDB operations.
@@ -99,8 +98,8 @@ func (d *Datastore) CreateUser(ctx context.Context, user *user.User) error {
 
 func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab.Type, baseURL string) error {
 	activities := d.client.Database("FediUni").Collection("activities")
-	objectID := primitive.NewObjectIDFromTimestamp(time.Now())
-	id, err := url.Parse(fmt.Sprintf("%s/activity/%s", baseURL, objectID.Hex()))
+	objectID := primitive.NewObjectID()
+	id, err := url.Parse(fmt.Sprintf("%s/activity/%s", baseURL, objectID.String()))
 	if err != nil {
 		return err
 	}
