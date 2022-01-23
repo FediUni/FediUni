@@ -38,7 +38,7 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 		pairs = append(pairs, fmt.Sprintf("%s: %s", strings.ToLower(name), value[0]))
 	}
 	toSign := strings.Join(pairs, "\n")
-	log.Infoln("Signing %q", toSign)
+	log.Infof("Signing %q", toSign)
 	hash := sha256.Sum256([]byte(toSign))
 	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hash[:])
 	if err != nil {
@@ -47,6 +47,6 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	encodedSignature := base64.StdEncoding.EncodeToString(signature)
 	header := fmt.Sprintf("keyId=%q,headers=%q,signature=%q", keyID, strings.Join(headers, " "), encodedSignature)
 	r.Header.Set("Signature", header)
-	log.Infoln("Successfully Determined HTTP Request Signature=%q", header)
+	log.Infof("Successfully Determined HTTP Request Signature=%q", header)
 	return r, nil
 }
