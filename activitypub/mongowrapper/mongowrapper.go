@@ -112,7 +112,7 @@ func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab
 	if err != nil {
 		return err
 	}
-	marshalledActivity["_id"] = id
+	marshalledActivity["_id"] = objectID
 	res, err := activities.InsertOne(ctx, marshalledActivity)
 	if err != nil {
 		return err
@@ -125,7 +125,7 @@ func (d *Datastore) GetActivity(ctx context.Context, activityID, baseURL string)
 	activities := d.client.Database("FediUni").Collection("activities")
 	objectID, err := primitive.ObjectIDFromHex(activityID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse ObjectID from")
+		return nil, fmt.Errorf("failed to parse ObjectID from Hex=%q: got err=%v", activityID, err)
 	}
 	filter := bson.D{{"_id", objectID}, {"id", fmt.Sprintf("%s/activity/%s", baseURL, activityID)}}
 	var activity vocab.Type
