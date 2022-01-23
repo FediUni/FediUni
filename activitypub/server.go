@@ -73,6 +73,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	}
 	s.Router = chi.NewRouter()
 
+	s.Router.Use(middleware.RealIP)
 	s.Router.Use(middleware.Logger)
 	s.Router.Use(middleware.Timeout(60 * time.Second))
 	s.Router.Use(httprate.LimitAll(100, time.Minute*1))
@@ -312,12 +313,17 @@ func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
 		return fmt.Errorf("failed to add follower to actor: got err=%v", err)
 	}
+	log.Infof("Sending Accept Request to %q", remoteActor.GetActivityStreamsInbox().GetIRI().String())
 	res, err := http.DefaultClient.Do(request)
 	defer res.Body.Close()
 	if err != nil {
 		return fmt.Errorf("failed to send accept request: got err=%v", err)
 	}
 	body, _ := ioutil.ReadAll(res.Body)
+	if res.StatusCode != 200 {
+		log.Infoln(res)
+		return fmt.Errorf("accept request has failed: %q", string(body))
+	}
 	log.Infof("AcceptActivity successfully POSTed: got=%v StatusCode=%d", string(body), res.StatusCode)
 	return nil
 }
