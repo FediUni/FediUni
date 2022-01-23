@@ -259,6 +259,11 @@ func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 	if err != nil {
 		return fmt.Errorf("failed to load person: got err=%v", err)
 	}
+	// Ensure Actor exists on this server before adding activity.
+	person, err := s.Datastore.GetActorByActorID(ctx, actorID.String())
+	if err != nil {
+		return fmt.Errorf("failed to load person: got err=%v", err)
+	}
 	if err := s.Datastore.AddActivityToSharedInbox(ctx, accept, s.URL.String()); err != nil {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
@@ -266,10 +271,6 @@ func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
 	request.Header.Add("Content-Type", "application/ld+json")
 	if err != nil {
 		return fmt.Errorf("failed to create Accept HTTP request: got err=%v", err)
-	}
-	person, err := s.Datastore.GetActorByActorID(ctx, actorID.String())
-	if err != nil {
-		return fmt.Errorf("failed to load person: got err=%v", err)
 	}
 	pem, err := s.readPrivateKey(person.GetActivityStreamsPreferredUsername().GetXMLSchemaString())
 	if err != nil {
