@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"github.com/go-fed/httpsig"
+	log "github.com/golang/glog"
 	"net/http"
 	"net/url"
 	"time"
@@ -19,6 +20,9 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	if keyID == "" {
 		return nil, fmt.Errorf("failed to receive a KeyID: got=%q", keyID)
 	}
+	if body == nil || len(body) == 0 {
+		log.Infoln("No body for request provided")
+	}
 	httpDate := time.Now().UTC().Format(http.TimeFormat)
 	host := url.Host
 	r.Header.Set("Host", host)
@@ -26,7 +30,8 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	prefs := []httpsig.Algorithm{httpsig.RSA_SHA256}
 	// The "Date" and "Digest" headers must already be set on r, as well as r.URL.
 	headersToSign := []string{httpsig.RequestTarget, "Host", "Date", "Digest"}
-	signer, _, err := httpsig.NewSigner(prefs, httpsig.DigestSha256, headersToSign, httpsig.Signature)
+	signer, algorithm, err := httpsig.NewSigner(prefs, httpsig.DigestSha256, headersToSign, httpsig.Signature)
+	log.Infof("Algorithm=%q for Signing", algorithm)
 	if err != nil {
 		return nil, err
 	}
