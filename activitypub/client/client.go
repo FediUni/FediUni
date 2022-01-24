@@ -74,11 +74,11 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 }
 
 func (c *Client) WebfingerLookup(ctx context.Context, iri *url.URL, actorID string) ([]byte, error) {
+	iri.Query().Add("resource", fmt.Sprintf("acct:%s@%s", actorID, iri.Host))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, iri.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-	req.URL.Query().Add("resource", fmt.Sprintf("acct:%s@%s", actorID, iri.Host))
 	log.Infof("Performing Webfinger Lookup: %q", req.URL.String())
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -88,6 +88,9 @@ func (c *Client) WebfingerLookup(ctx context.Context, iri *url.URL, actorID stri
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		return nil, err
+	}
+	if len(body) == 0 {
+		return nil, fmt.Errorf("received empty body: %q", string(body))
 	}
 	return body, nil
 }
