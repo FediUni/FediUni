@@ -22,7 +22,7 @@ type TestDatastore struct {
 
 func NewTestDatastore(rawURL string) *TestDatastore {
 	parsedURL, _ := url.Parse(rawURL)
-	keyGenerator := actor.NewPKCS1KeyGenerator()
+	keyGenerator := actor.NewRSAKeyGenerator()
 	personGenerator := actor.NewPersonGenerator(parsedURL, keyGenerator)
 	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
 	return &TestDatastore{

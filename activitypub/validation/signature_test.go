@@ -64,14 +64,14 @@ func TestValidate(t *testing.T) {
 	}{
 		{
 			name:           "Test validate request with valid validation (PKCS1)",
-			keyGenerator:   actor.NewPKCS1KeyGenerator(),
+			keyGenerator:   actor.NewRSAKeyGenerator(),
 			wantStatusCode: 200,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			testURL, _ := url.Parse("testfediuni.com")
-			keyGenerator := actor.NewPKCS1KeyGenerator()
+			keyGenerator := actor.NewRSAKeyGenerator()
 			generator := actor.NewPersonGenerator(testURL, keyGenerator)
 			person, err := generator.NewPerson("brandonstark", "8R4ND0N")
 			if err != nil {

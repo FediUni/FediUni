@@ -50,7 +50,7 @@ type Server struct {
 	Router       *chi.Mux
 	Datastore    Datastore
 	Redis        *redis.Client
-	KeyGenerator actor.RSAKeyGenerator
+	KeyGenerator actor.KeyGenerator
 	Client       *client.Client
 }
 
@@ -69,7 +69,7 @@ var (
 	tokenAuth *jwtauth.JWTAuth
 )
 
-func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor.RSAKeyGenerator, secret string) (*Server, error) {
+func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
 	url, err := url.Parse(instanceURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse instanceURL=%q: got err=%v", instanceURL, err)

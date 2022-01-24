@@ -25,7 +25,7 @@ type RSAKeyGenerator struct {
 	PublicKey  *bytes.Buffer
 }
 
-func NewPKCS1KeyGenerator() *RSAKeyGenerator {
+func NewRSAKeyGenerator() *RSAKeyGenerator {
 	return &RSAKeyGenerator{
 		PrivateKey: &bytes.Buffer{},
 		PublicKey:  &bytes.Buffer{},
@@ -40,10 +40,10 @@ type KeyGenerator interface {
 
 type PersonGenerator struct {
 	InstanceURL  *url.URL
-	KeyGenerator RSAKeyGenerator
+	KeyGenerator KeyGenerator
 }
 
-func NewPersonGenerator(url *url.URL, keyGenerator RSAKeyGenerator) *PersonGenerator {
+func NewPersonGenerator(url *url.URL, keyGenerator KeyGenerator) *PersonGenerator {
 	return &PersonGenerator{
 		InstanceURL:  url,
 		KeyGenerator: keyGenerator,
