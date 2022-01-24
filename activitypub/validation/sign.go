@@ -59,6 +59,9 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	}
 	encodedSignature := base64.StdEncoding.EncodeToString(signature)
 	log.Infof("Determined Signature=%q", encodedSignature)
-	r.Header.Set("Signature", fmt.Sprintf("keyId=%q,algorithm=%q,headers=%q,signature=%q", keyID, "rsa-sha256", headers, encodedSignature))
+	signatureHeaderValue := fmt.Sprintf("keyId=%q,algorithm=%q,headers=%q,signature=%q", keyID, "rsa-sha256", headers, encodedSignature)
+	log.Infof("Setting Signature Header value: Signature: %s", signatureHeaderValue)
+	r.Header.Set("Signature", signatureHeaderValue)
+	log.Infof("Request Headers: %v", r.Header)
 	return r, nil
 }
