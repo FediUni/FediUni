@@ -73,7 +73,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse instanceURL=%q: got err=%v", instanceURL, err)
 	}
-	tokenAuth = jwtauth.New("RS256", secret, nil)
+	tokenAuth = jwtauth.New("HS256", secret, nil)
 	s := &Server{
 		URL:          url,
 		Keys:         keys,
@@ -622,7 +622,7 @@ func createToken(username string, expirationTime time.Time) (string, error) {
 	claims := jwt.MapClaims{}
 	claims["username"] = username
 	claims["exp"] = expirationTime.Unix()
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	secret := viper.GetString("SECRET")
 	if secret == "" {
 		return "", fmt.Errorf("failed to provide a secret for JWT signing")
