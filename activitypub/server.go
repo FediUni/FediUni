@@ -3,6 +3,7 @@ package activitypub
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"github.com/FediUni/FediUni/activitypub/activity"
@@ -434,13 +435,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	objectProperty := streams.NewActivityStreamsObjectProperty()
 	objectProperty.AppendActivityStreamsPerson(person)
 	followActivity.SetActivityStreamsObject(objectProperty)
-	privateKeyPEM, err := s.readPrivateKey(username)
-	if err != nil {
-		log.Errorf("failed to read private key: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
-		return
-	}
-	privateKey, err := validation.ParsePrivateKeyFromPEMBlock(privateKeyPEM)
+	privateKey, err := s.readPrivateKey(username)
 	if err != nil {
 		log.Errorf("failed to read private key: got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
@@ -626,8 +621,19 @@ func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
 	w.Write(response)
 }
 
-func (s *Server) readPrivateKey(actor string) (string, error) {
-	return s.Redis.Get(strings.ToLower(actor)).Result()
+func (s *Server) readPrivateKey(actor string) (*rsa.PrivateKey, error) {
+	privateKeyPEM, err := s.Redis.Get(strings.ToLower(actor)).Result()
+	if err != nil {
+		return nil, err
+	}
+	privateKey, err := validation.ParsePrivateKeyFromPEMBlock(privateKeyPEM)
+	if err != nil {
+		return nil, err
+	}
+	if err := privateKey.Validate(); err != nil {
+		return nil, err
+	}
+	return privateKey, err
 }
 
 func createToken(username string, expirationTime time.Time) (string, error) {
