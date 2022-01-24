@@ -347,7 +347,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("invalid follow request presented: expected @username@domain format"), http.StatusBadRequest)
 		return
 	}
-	webfingerURL, err := url.Parse(fmt.Sprintf("%s/.well-known/webfinger", domain))
+	webfingerURL, err := url.Parse(fmt.Sprintf("https://%s/.well-known/webfinger", domain))
 	if err != nil {
 		log.Errorf("failed to parse URL from domain=%q: got err=%v", domain, err)
 		http.Error(w, fmt.Sprintf("invalid follow request presented: invalid domain presented"), http.StatusBadRequest)

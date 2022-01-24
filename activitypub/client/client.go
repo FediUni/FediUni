@@ -10,6 +10,7 @@ import (
 	"github.com/FediUni/FediUni/activitypub/validation"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
+	log "github.com/golang/glog"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -78,6 +79,7 @@ func (c *Client) WebfingerLookup(ctx context.Context, iri *url.URL, actorID stri
 		return nil, err
 	}
 	req.URL.Query().Add("resource", fmt.Sprintf("acct:%s@%s", actorID, iri.Host))
+	log.Infoln("Performing Webfinger Lookup: %q", req.URL.String())
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
