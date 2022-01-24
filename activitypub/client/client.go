@@ -79,7 +79,7 @@ func (c *Client) WebfingerLookup(ctx context.Context, iri *url.URL, actorID stri
 		return nil, err
 	}
 	req.URL.Query().Add("resource", fmt.Sprintf("acct:%s@%s", actorID, iri.Host))
-	log.Infoln("Performing Webfinger Lookup: %q", req.URL.String())
+	log.Infof("Performing Webfinger Lookup: %q", req.URL.String())
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
