@@ -54,18 +54,19 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL) (vocab.Typ
 
 func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.Type, keyID string, privateKey *rsa.PrivateKey) error {
 	log.Infof("Marshalling Activity")
-	marshalledFollowActivity, err := activity.JSON(object)
+	marshalledActivity, err := activity.JSON(object)
 	if err != nil {
 		return err
 	}
+	log.Infof("MarshalledActivity = %q", string(marshalledActivity))
 	log.Infof("Creating Request to URL=%q", inbox.String())
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, inbox.String(), bytes.NewBuffer(marshalledFollowActivity))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, inbox.String(), bytes.NewBuffer(marshalledActivity))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/ld+json")
 	log.Infof("Signing Request...")
-	req, err = validation.SignRequestWithDigest(req, c.InstanceURL, keyID, privateKey, marshalledFollowActivity)
+	req, err = validation.SignRequestWithDigest(req, c.InstanceURL, keyID, privateKey, marshalledActivity)
 	if err != nil {
 		return err
 	}
