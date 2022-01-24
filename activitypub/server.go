@@ -359,14 +359,15 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to perform webfinger lookup"), http.StatusInternalServerError)
 		return
 	}
-	var webfingerResponse *WebfingerResponse
+	log.Infof("Received %q", res)
+	var webfingerResponse WebfingerResponse
 	if err := json.Unmarshal(res, &webfingerResponse); err != nil {
 		log.Errorf("failed to perform webfinger lookup: got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to perform webfinger lookup"), http.StatusInternalServerError)
 		return
 	}
 	if len(webfingerResponse.Links) == 0 {
-		log.Errorf("failed to perform webfinger lookup: got err=%v", err)
+		log.Errorf("failed to perform webfinger lookup: got number_of_links=%d", len(webfingerResponse.Links))
 		http.Error(w, fmt.Sprintf("failed to perform webfinger lookup"), http.StatusInternalServerError)
 		return
 	}
