@@ -42,5 +42,6 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	splitHeader := strings.SplitN(authorizationHeader, " ", 2)
 	r.Header.Set("Signature", splitHeader[1])
 	log.Infof("Signature=%q", splitHeader[1])
+	r.Header.Del("Authorization")
 	return r, nil
 }
