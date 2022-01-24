@@ -12,8 +12,8 @@ const (
 
 // User is used for authentication purposes.
 type User struct {
-	Username string
-	Password string
+	Username string `json:"username" bson:"username"`
+	Password string `json:"password" bson:"password"`
 	Person   actor.Person
 }
 
