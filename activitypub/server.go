@@ -15,6 +15,7 @@ import (
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/spf13/viper"
+	"golang.org/x/crypto/bcrypt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -222,19 +223,14 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprint("failed to parse login form: invalid password"), http.StatusBadRequest)
 		return
 	}
-	hashedPassword, err := user.HashPassword(password)
-	if err != nil {
-		log.Errorf("hashing password failed: got err=%v", err)
-		http.Error(w, fmt.Sprint("failed to determine password hash"), http.StatusBadRequest)
-		return
-	}
 	user, err := s.Datastore.GetUserByUsername(r.Context(), username)
 	if err != nil {
 		log.Errorf("failed to load username=%q details: got err=%v", username, err)
 		http.Error(w, fmt.Sprint("failed to load user details"), http.StatusInternalServerError)
 		return
 	}
-	if strings.Compare(string(hashedPassword), user.Password) != 0 {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		log.Errorf("invalid password provided: got err=%v", err)
 		http.Error(w, fmt.Sprint("invalid password"), http.StatusInternalServerError)
 		return
 	}
