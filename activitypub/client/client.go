@@ -32,7 +32,7 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL) (vocab.Typ
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/activity+json")
-	log.Infoln("Fetching resource at ID=%q", iri.String())
+	log.Infof("Fetching resource at ID=%q", iri.String())
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
