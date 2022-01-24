@@ -75,12 +75,8 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 
 func (c *Client) WebfingerLookup(ctx context.Context, iri *url.URL, actorID string) ([]byte, error) {
 	iri.Query().Add("resource", fmt.Sprintf("acct:%s@%s", actorID, iri.Host))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, iri.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	log.Infof("Performing Webfinger Lookup: %q", req.URL.String())
-	res, err := http.DefaultClient.Do(req)
+	log.Infof("Performing Webfinger Lookup: %q", iri.String())
+	res, err := http.DefaultClient.Get(iri.String())
 	if err != nil {
 		return nil, err
 	}
