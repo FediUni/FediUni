@@ -27,6 +27,9 @@ func NewClient(instanceURL *url.URL) *Client {
 }
 
 func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL) (vocab.Type, error) {
+	if iri == nil {
+		return nil, fmt.Errorf("failed to receive IRI: got=%v", iri)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, iri.String(), nil)
 	if err != nil {
 		return nil, err

@@ -373,7 +373,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	var actorID *url.URL
 	for _, link := range webfingerResponse.Links {
-		if !(strings.Contains(link.Type, "application/activity+json") && strings.Contains(link.Type, "application/ld+json")) {
+		if !strings.Contains(link.Type, "application/activity+json") && !strings.Contains(link.Type, "application/ld+json") {
 			continue
 		}
 		if actorID, err = url.Parse(link.Href); err != nil {
