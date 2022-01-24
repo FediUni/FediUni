@@ -374,12 +374,14 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	var actorID *url.URL
 	for _, link := range webfingerResponse.Links {
 		if !(strings.Contains(link.Type, "application/activity+json") && strings.Contains(link.Type, "application/ld+json")) {
-			if actorID, err = url.Parse(link.Href); err != nil {
-				log.Errorf("failed to load actorID: got err=%v", err)
-				http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorToFollow), http.StatusBadRequest)
-				return
-			}
+			continue
 		}
+		if actorID, err = url.Parse(link.Href); err != nil {
+			log.Errorf("failed to load actorID: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorToFollow), http.StatusBadRequest)
+			return
+		}
+		break
 	}
 	object, err := s.Client.FetchRemoteObject(ctx, actorID)
 	var personToFollow vocab.ActivityStreamsPerson
