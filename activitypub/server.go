@@ -32,8 +32,6 @@ import (
 	log "github.com/golang/glog"
 )
 
-var tokenAuth *jwtauth.JWTAuth
-
 type Datastore interface {
 	GetActorByUsername(context.Context, string) (actor.Person, error)
 	GetActivity(context.Context, string, string) (vocab.Type, error)
@@ -65,6 +63,10 @@ type WebfingerLink struct {
 	Href string `json:"href"`
 }
 
+var (
+	tokenAuth *jwtauth.JWTAuth
+)
+
 func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
 	url, err := url.Parse(instanceURL)
 	if err != nil {
@@ -76,7 +78,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 		Keys:         keys,
 		Datastore:    datastore,
 		KeyGenerator: keyGenerator,
-		Client:       client.NewClient(),
+		Client:       client.NewClient(url),
 	}
 	s.Router = chi.NewRouter()
 
@@ -278,7 +280,7 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 	log.Infof("Determining Activity Type: got=%q", activityRequest.GetTypeName())
 	switch typeName := activityRequest.GetTypeName(); typeName {
 	case "Follow":
-		if err := s.follow(ctx, activityRequest); err != nil {
+		if err := s.handleFollowRequest(ctx, activityRequest); err != nil {
 			log.Errorf("Failed to add follower to user: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to accept follower request"), http.StatusInternalServerError)
 			return
@@ -304,10 +306,9 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	_, claims, err := jwtauth.FromContext(ctx)
+	_, claims, err := jwtauth.FromContext(r.Context())
 	if err != nil {
 		log.Errorf("Failed to read from JWT: got err=%v", err)
-		http.Error(w, fmt.Sprintf("bad jwt presented"), http.StatusUnauthorized)
 		return
 	}
 	rawUsername := claims["username"]
@@ -320,20 +321,134 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to load username"), http.StatusUnauthorized)
 		return
 	}
-	fmt.Printf("username=%q\n", username)
-	http.Error(w, fmt.Sprintf("sending follow requests is unimplemented"), http.StatusNotImplemented)
+	raw, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Errorf("Failed to read request body: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to read body"), http.StatusInternalServerError)
+		return
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		log.Errorf("Failed to unmarshal follow request: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to unmarshal follow request"), http.StatusInternalServerError)
+		return
+	}
+	rawActorID := m["actorID"]
+	var actorToFollow string
+	switch rawActorID.(type) {
+	case string:
+		actorToFollow = rawActorID.(string)
+	default:
+		log.Errorf("Invalid actor ID presented: got %v", rawActorID)
+		http.Error(w, fmt.Sprintf("invalid follow request presented: expected @username@domain format"), http.StatusBadRequest)
+		return
+	}
+	split := strings.SplitN(actorToFollow, "@", 3)
+	usernameToFollow := split[1]
+	domain := split[2]
+	if username == "" || domain == "" {
+		log.Errorf("invalid follow request presented: got actorID=%v", split)
+		http.Error(w, fmt.Sprintf("invalid follow request presented: expected @username@domain format"), http.StatusBadRequest)
+		return
+	}
+	webfingerURL, err := url.Parse(fmt.Sprintf("%s/.well-known/webfinger", domain))
+	if err != nil {
+		log.Errorf("failed to parse URL from domain=%q: got err=%v", domain, err)
+		http.Error(w, fmt.Sprintf("invalid follow request presented: invalid domain presented"), http.StatusBadRequest)
+		return
+	}
+	res, err := s.Client.WebfingerLookup(ctx, webfingerURL, usernameToFollow)
+	if err != nil {
+		log.Errorf("failed to perform webfinger lookup: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to perform webfinger lookup"), http.StatusInternalServerError)
+		return
+	}
+	var webfingerResponse *WebfingerResponse
+	if err := json.Unmarshal(res, &webfingerResponse); err != nil {
+		log.Errorf("failed to perform webfinger lookup: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to perform webfinger lookup"), http.StatusInternalServerError)
+		return
+	}
+	if len(webfingerResponse.Links) == 0 {
+		log.Errorf("failed to perform webfinger lookup: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to perform webfinger lookup"), http.StatusInternalServerError)
+		return
+	}
+	var actorID *url.URL
+	for _, link := range webfingerResponse.Links {
+		if !(strings.Contains(link.Type, "application/activity+json") && strings.Contains(link.Type, "application/ld+json")) {
+			if actorID, err = url.Parse(link.Href); err != nil {
+				log.Errorf("failed to load actorID: got err=%v", err)
+				http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorToFollow), http.StatusBadRequest)
+				return
+			}
+		}
+	}
+	object, err := s.Client.FetchRemoteObject(ctx, actorID)
+	var personToFollow vocab.ActivityStreamsPerson
+	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
+		personToFollow = p
+		return nil
+	})
+	if err != nil {
+		log.Errorf("failed to create Type Resolver: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorToFollow), http.StatusInternalServerError)
+		return
+	}
+	if err := resolver.Resolve(ctx, object); err != nil {
+		log.Errorf("failed to resolve actor=%q: got err=%v", actorToFollow, err)
+		http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorToFollow), http.StatusInternalServerError)
+		return
+	}
+	inbox := personToFollow.GetActivityStreamsInbox()
+	if inbox == nil {
+		log.Errorf("actor=%q failed to provide inbox", actorToFollow)
+		http.Error(w, fmt.Sprintf("actor=%q failed to provide an inbox", actorToFollow), http.StatusInternalServerError)
+		return
+	}
+	person, err := s.Datastore.GetActorByUsername(ctx, username)
+	if err != nil {
+		log.Errorf("failed to load actor=%q: got err=%v", username, err)
+		http.Error(w, fmt.Sprintf("failed to load actor=%q", username), http.StatusInternalServerError)
+		return
+	}
+	inboxURL := inbox.GetIRI()
+	followActivity := streams.NewActivityStreamsFollow()
+	actorProperty := streams.NewActivityStreamsActorProperty()
+	actorProperty.AppendActivityStreamsPerson(personToFollow)
+	followActivity.SetActivityStreamsActor(actorProperty)
+	objectProperty := streams.NewActivityStreamsObjectProperty()
+	objectProperty.AppendActivityStreamsPerson(person)
+	followActivity.SetActivityStreamsObject(objectProperty)
+	privateKeyPEM, err := s.readPrivateKey(username)
+	if err != nil {
+		log.Errorf("failed to read private key: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
+		return
+	}
+	privateKey, err := validation.ParsePrivateKeyFromPEMBlock(privateKeyPEM)
+	if err != nil {
+		log.Errorf("failed to read private key: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
+		return
+	}
+	if err := s.Client.PostToInbox(ctx, inboxURL, followActivity, person.GetJSONLDId().Get().String(), privateKey); err != nil {
+		log.Errorf("failed to post to inbox: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
+		return
+	}
 	return
 }
 
-// Follow allows the actor to follow the requested person on this instance.
-// Currently, follow automatically accepts all incoming follow requests, but
-// users should be able to confirm and deny follow requests before the Accept
+// handleFollowRequest allows the actor to follow the requested person on this instance.
+// Currently, follow automatically accepts all incoming handleFollowRequest requests, but
+// users should be able to confirm and deny handleFollowRequest requests before the Accept
 // activity is sent.
-func (s *Server) follow(ctx context.Context, activityRequest vocab.Type) error {
+func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.Type) error {
 	log.Infoln("Received Follow Activity")
 	follow, err := follower.ParseFollowRequest(ctx, activityRequest)
 	if err != nil {
-		return fmt.Errorf("failed to parse follow activityRequest: got err=%v", err)
+		return fmt.Errorf("failed to parse handleFollowRequest activityRequest: got err=%v", err)
 	}
 	followerID := follow.GetActivityStreamsActor().Begin().GetIRI()
 	if followerID.String() == "" {

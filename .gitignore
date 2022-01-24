@@ -15,6 +15,7 @@
 *.out
 
 config.yaml
+test_config.yaml
 
 .history
 
