@@ -53,26 +53,34 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL) (vocab.Typ
 }
 
 func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.Type, keyID string, privateKey *rsa.PrivateKey) error {
+	log.Infof("Marshalling Activity")
 	marshalledFollowActivity, err := activity.JSON(object)
 	if err != nil {
 		return err
 	}
+	log.Infof("Creating Request to URL=%q", inbox.String())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, inbox.String(), bytes.NewBuffer(marshalledFollowActivity))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/ld+json")
+	log.Infof("Signing Request...")
 	req, err = validation.SignRequestWithDigest(req, c.InstanceURL, keyID, privateKey, marshalledFollowActivity)
 	if err != nil {
 		return err
 	}
+	log.Infof("Sending Request...")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer res.Body.Close()
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("Failed to read from response body: got err=%v", err)
+	}
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to post object to inbox=%q", inbox.String())
+		return fmt.Errorf("failed to post object to inbox=%q: got StatusCode=%d, Body=%v", inbox.String(), res.StatusCode, body)
 	}
 	return nil
 }
