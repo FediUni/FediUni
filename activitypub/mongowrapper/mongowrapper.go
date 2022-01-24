@@ -96,6 +96,15 @@ func (d *Datastore) CreateUser(ctx context.Context, user *user.User) error {
 	return nil
 }
 
+func (d *Datastore) GetUserByUsername(ctx context.Context, username string) (*user.User, error) {
+	users := d.client.Database("FediUni").Collection("users")
+	var user *user.User
+	if err := users.FindOne(ctx, bson.D{{"username", strings.ToLower(username)}}).Decode(&user); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab.Type, baseURL string) error {
 	activities := d.client.Database("FediUni").Collection("activities")
 	objectID := primitive.NewObjectID()

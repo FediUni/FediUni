@@ -52,7 +52,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	s, err := activitypub.NewServer(instanceURL, *keys, datastore, actor.NewPKCS1KeyGenerator())
+	s, err := activitypub.NewServer(instanceURL, *keys, datastore, actor.NewPKCS1KeyGenerator(), viper.GetString("SECRET"))
 	if err != nil {
 		log.Fatalf("failed to create service: got err=%v", err)
 	}
