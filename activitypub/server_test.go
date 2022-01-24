@@ -30,7 +30,7 @@ func NewTestDatastore(rawURL string) *TestDatastore {
 			"brandonstark": person,
 		},
 		privateKeys: map[string]string{
-			"brandonstark": keyGenerator.PrivateKeyPEM.String(),
+			"brandonstark": keyGenerator.PrivateKey.String(),
 		},
 	}
 }

@@ -59,7 +59,7 @@ func TestProcessSignatureHeader(t *testing.T) {
 func TestValidate(t *testing.T) {
 	tests := []struct {
 		name           string
-		keyGenerator   *actor.PKCS1KeyGenerator
+		keyGenerator   *actor.RSAKeyGenerator
 		wantStatusCode int
 	}{
 		{
@@ -91,7 +91,7 @@ func TestValidate(t *testing.T) {
 			defer server.Close()
 			body := []byte("testbody")
 			request, _ := http.NewRequest("POST", fmt.Sprintf("%s/actor/brandonstark/inbox", serverURL), bytes.NewBuffer(body))
-			block, _ := pem.Decode(keyGenerator.PrivateKeyPEM.Bytes())
+			block, _ := pem.Decode(keyGenerator.PrivateKey.Bytes())
 			if block == nil {
 				t.Errorf("failed to parse PEM block")
 			}

@@ -20,15 +20,15 @@ type Person vocab.ActivityStreamsPerson
 
 type PublicKey vocab.W3IDSecurityV1PublicKey
 
-type PKCS1KeyGenerator struct {
-	PrivateKeyPEM *bytes.Buffer
-	PublicKeyPEM  *bytes.Buffer
+type RSAKeyGenerator struct {
+	PrivateKey *bytes.Buffer
+	PublicKey  *bytes.Buffer
 }
 
-func NewPKCS1KeyGenerator() *PKCS1KeyGenerator {
-	return &PKCS1KeyGenerator{
-		PrivateKeyPEM: &bytes.Buffer{},
-		PublicKeyPEM:  &bytes.Buffer{},
+func NewPKCS1KeyGenerator() *RSAKeyGenerator {
+	return &RSAKeyGenerator{
+		PrivateKey: &bytes.Buffer{},
+		PublicKey:  &bytes.Buffer{},
 	}
 }
 
@@ -40,10 +40,10 @@ type KeyGenerator interface {
 
 type PersonGenerator struct {
 	InstanceURL  *url.URL
-	KeyGenerator KeyGenerator
+	KeyGenerator RSAKeyGenerator
 }
 
-func NewPersonGenerator(url *url.URL, keyGenerator KeyGenerator) *PersonGenerator {
+func NewPersonGenerator(url *url.URL, keyGenerator RSAKeyGenerator) *PersonGenerator {
 	return &PersonGenerator{
 		InstanceURL:  url,
 		KeyGenerator: keyGenerator,
@@ -133,40 +133,44 @@ func (p *PersonGenerator) GeneratePublicKey(username string) (vocab.W3IDSecurity
 	return publicKey, nil
 }
 
-func (g *PKCS1KeyGenerator) GenerateKeyPair() (string, string, error) {
+func (g *RSAKeyGenerator) GenerateKeyPair() (string, string, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate private key: got err=%v", err)
 	}
-	if err = pem.Encode(g.PrivateKeyPEM, &pem.Block{
+	if err = pem.Encode(g.PrivateKey, &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 	}); err != nil {
 		return "", "", fmt.Errorf("failed to encode RSA private key in PEM format: got err=%v", err)
 	}
-	if err = pem.Encode(g.PublicKeyPEM, &pem.Block{
-		Type:  "RSA PUBLIC KEY",
-		Bytes: x509.MarshalPKCS1PublicKey(&privateKey.PublicKey),
-	}); err != nil {
-		return "", "", fmt.Errorf("failed to encode RSA public key in PEM format: got err=%v", err)
+	marshalledPublicKey, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal PKIX public key: got err=%v", err)
 	}
-	return g.PrivateKeyPEM.String(), g.PublicKeyPEM.String(), nil
+	if err = pem.Encode(g.PublicKey, &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: marshalledPublicKey,
+	}); err != nil {
+		return "", "", fmt.Errorf("failed to encode public key in PEM format: got err=%v", err)
+	}
+	return g.PrivateKey.String(), g.PublicKey.String(), nil
 }
 
-func (g *PKCS1KeyGenerator) GetPrivateKeyPEM() ([]byte, error) {
-	if g.PrivateKeyPEM.Len() == 0 {
+func (g *RSAKeyGenerator) GetPrivateKeyPEM() ([]byte, error) {
+	if g.PrivateKey.Len() == 0 {
 		return nil, fmt.Errorf("private key has not been generated")
 	}
-	return g.PrivateKeyPEM.Bytes(), nil
+	return g.PrivateKey.Bytes(), nil
 }
 
-func (g *PKCS1KeyGenerator) WritePrivateKey(privateKeyPath string) error {
+func (g *RSAKeyGenerator) WritePrivateKey(privateKeyPath string) error {
 	privatePem, err := os.Create(privateKeyPath)
 	if err != nil {
 		return fmt.Errorf("failed to create private pem file: got err=%v", err)
 	}
 	defer privatePem.Close()
-	if _, err := g.PrivateKeyPEM.WriteTo(privatePem); err != nil {
+	if _, err := g.PrivateKey.WriteTo(privatePem); err != nil {
 		return fmt.Errorf("failed to write private key to path=%q: got err=%v", privateKeyPath, err)
 	}
 	return nil
