@@ -37,6 +37,10 @@ func main() {
 	if instanceURL == "" {
 		log.Fatalf("invalid configuration: FEDIUNI_URL is unspecified")
 	}
+	secret := viper.GetString("SECRET")
+	if secret == "" {
+		log.Fatalf("failed to receive SECRET")
+	}
 	ctx := context.Background()
 	client, err := mongo.Connect(ctx, options.Client(), options.Client().ApplyURI(mongoURI))
 	if err != nil {

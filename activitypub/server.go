@@ -623,5 +623,9 @@ func createToken(username string, expirationTime time.Time) (string, error) {
 	claims["username"] = username
 	claims["exp"] = expirationTime.Unix()
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	return token.SignedString(viper.GetString("SECRET"))
+	secret := viper.GetString("SECRET")
+	if secret == "" {
+		return "", fmt.Errorf("failed to provide a secret for JWT signing")
+	}
+	return token.SignedString([]byte(secret))
 }
