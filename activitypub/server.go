@@ -10,8 +10,11 @@ import (
 	"github.com/FediUni/FediUni/activitypub/follower"
 	"github.com/FediUni/FediUni/activitypub/undo"
 	"github.com/FediUni/FediUni/activitypub/validation"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/go-chi/jwtauth"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
+	"github.com/spf13/viper"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -29,10 +32,13 @@ import (
 	log "github.com/golang/glog"
 )
 
+var tokenAuth *jwtauth.JWTAuth
+
 type Datastore interface {
 	GetActorByUsername(context.Context, string) (actor.Person, error)
 	GetActivity(context.Context, string, string) (vocab.Type, error)
 	CreateUser(context.Context, *user.User) error
+	GetUserByUsername(context.Context, string) (*user.User, error)
 	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
 	AddFollowerToActor(context.Context, string, string) error
 	RemoveFollowerFromActor(context.Context, string, string) error
@@ -59,11 +65,12 @@ type WebfingerLink struct {
 	Href string `json:"href"`
 }
 
-func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor.KeyGenerator) (*Server, error) {
+func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
 	url, err := url.Parse(instanceURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse instanceURL=%q: got err=%v", instanceURL, err)
 	}
+	tokenAuth = jwtauth.New("RS256", secret, nil)
 	s := &Server{
 		URL:          url,
 		Keys:         keys,
@@ -86,6 +93,8 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	s.Router.With(validation.Digest).With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	s.Router.Get("/actor/{username}/outbox", s.getActorOutbox)
 	s.Router.Post("/register", s.createUser)
+	s.Router.Post("/login", s.login)
+	s.Router.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
 	return s, nil
 }
 
@@ -193,6 +202,55 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Successfully created user and person."))
 }
 
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		log.Errorf("failed to parse Login Form: got err=%v", err)
+		http.Error(w, fmt.Sprint("failed to parse login form"), http.StatusBadRequest)
+		return
+	}
+	username := r.FormValue("username")
+	if username == "" {
+		log.Errorf("failed to parse Login Form: got username=%q", username)
+		http.Error(w, fmt.Sprint("failed to parse login form: invalid username"), http.StatusBadRequest)
+		return
+	}
+	password := r.FormValue("password")
+	if password == "" {
+		log.Errorf("failed to parse Login Form: got password=%q", password)
+		http.Error(w, fmt.Sprint("failed to parse login form: invalid password"), http.StatusBadRequest)
+		return
+	}
+	hashedPassword, err := user.HashPassword(password)
+	if err != nil {
+		log.Errorf("hashing password failed: got err=%v", err)
+		http.Error(w, fmt.Sprint("failed to determine password hash"), http.StatusBadRequest)
+		return
+	}
+	user, err := s.Datastore.GetUserByUsername(r.Context(), username)
+	if err != nil {
+		log.Errorf("failed to load username=%q details: got err=%v", username, err)
+		http.Error(w, fmt.Sprint("failed to load user details"), http.StatusInternalServerError)
+		return
+	}
+	if strings.Compare(string(hashedPassword), user.Password) != 0 {
+		http.Error(w, fmt.Sprint("invalid password"), http.StatusInternalServerError)
+		return
+	}
+	expirationTime := time.Now().Add(72 * time.Hour)
+	token, err := createToken(username, expirationTime)
+	if err != nil {
+		log.Errorf("failed to generate JWT: got err=%v", err)
+		http.Error(w, fmt.Sprint("failed to generate JWT"), http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "jwt",
+		Value:    token,
+		Expires:  expirationTime,
+		HttpOnly: true,
+	})
+}
+
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	actorID := chi.URLParam(r, "username")
 	if actorID == "" {
@@ -242,6 +300,29 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(200)
+}
+
+func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("bad jwt presented"), http.StatusUnauthorized)
+		return
+	}
+	rawUsername := claims["username"]
+	var username string
+	switch rawUsername.(type) {
+	case string:
+		username = rawUsername.(string)
+	default:
+		log.Errorf("Invalid actor ID presented: got %v", rawUsername)
+		http.Error(w, fmt.Sprintf("failed to load username"), http.StatusUnauthorized)
+		return
+	}
+	fmt.Printf("username=%q\n", username)
+	http.Error(w, fmt.Sprintf("sending follow requests is unimplemented"), http.StatusNotImplemented)
+	return
 }
 
 // Follow allows the actor to follow the requested person on this instance.
@@ -424,4 +505,12 @@ func (s *Server) readPrivateKey(actor string) (string, error) {
 		return "", err
 	}
 	return string(privateKeyPEM), nil
+}
+
+func createToken(username string, expirationTime time.Time) (string, error) {
+	claims := jwt.MapClaims{}
+	claims["username"] = username
+	claims["exp"] = expirationTime.Unix()
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	return token.SignedString(viper.GetString("SECRET"))
 }

@@ -28,7 +28,7 @@ func NewUser(username, password string, person actor.Person) (*User, error) {
 	if password == "" {
 		return nil, fmt.Errorf("password is unspecified: got password=%q", password)
 	}
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+	hashedPassword, err := HashPassword(password)
 	if err != nil {
 		return nil, fmt.Errorf("hashing password failed: got err=%v", err)
 	}
@@ -37,4 +37,8 @@ func NewUser(username, password string, person actor.Person) (*User, error) {
 		Password: string(hashedPassword),
 		Person:   person,
 	}, nil
+}
+
+func HashPassword(password string) ([]byte, error) {
+	return bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 }
