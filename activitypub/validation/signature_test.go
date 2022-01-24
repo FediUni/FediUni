@@ -91,7 +91,7 @@ func TestValidate(t *testing.T) {
 			defer server.Close()
 			body := []byte("testbody")
 			request, _ := http.NewRequest("POST", fmt.Sprintf("%s/actor/brandonstark/inbox", serverURL), bytes.NewBuffer(body))
-			block, _ := pem.Decode(keyGenerator.PrivateKey.Bytes())
+			block, _ := pem.Decode(keyGenerator.PrivateKeyPEM.Bytes())
 			if block == nil {
 				t.Errorf("failed to parse PEM block")
 			}

@@ -30,7 +30,7 @@ func NewTestDatastore(rawURL string) *TestDatastore {
 			"brandonstark": person,
 		},
 		privateKeys: map[string]string{
-			"brandonstark": keyGenerator.PrivateKey.String(),
+			"brandonstark": keyGenerator.PrivateKeyPEM.String(),
 		},
 	}
 }
@@ -78,6 +78,10 @@ func (g *TestKeyGenerator) GenerateKeyPair() (string, string, error) {
 
 func (g *TestKeyGenerator) WritePrivateKey(string) error {
 	return nil
+}
+
+func (g *TestKeyGenerator) GetPrivateKeyPEM() ([]byte, error) {
+	return nil, fmt.Errorf("GetPrivateKeyPEM() is unimplemented")
 }
 
 func TestGetActor(t *testing.T) {

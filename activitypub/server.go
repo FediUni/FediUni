@@ -14,13 +14,12 @@ import (
 	"github.com/go-chi/jwtauth"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
+	"github.com/go-redis/redis"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/bcrypt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"text/template"
 	"time"
@@ -49,6 +48,7 @@ type Server struct {
 	Keys         string
 	Router       *chi.Mux
 	Datastore    Datastore
+	Redis        *redis.Client
 	KeyGenerator actor.KeyGenerator
 	Client       *client.Client
 }
@@ -80,6 +80,10 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 		Datastore:    datastore,
 		KeyGenerator: keyGenerator,
 		Client:       client.NewClient(url),
+		Redis: redis.NewClient(&redis.Options{
+			Addr:     "redis:6379",
+			Password: viper.GetString("REDIS_PASSWORD"),
+		}),
 	}
 	s.Router = chi.NewRouter()
 
@@ -185,20 +189,26 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("Failed to create person, got err=%v", err)
 		return
 	}
-	if err := s.KeyGenerator.WritePrivateKey(filepath.Join(s.Keys, fmt.Sprintf("%s_private.pem", username))); err != nil {
-		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusInternalServerError)
-		log.Errorf("Failed to write private key, got err=%v", err)
-		return
-	}
 	newUser, err := user.NewUser(username, password, person)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusBadRequest)
 		log.Errorf("Failed to create user, got err=%v", err)
 		return
 	}
+	privateKeyPEM, err := s.KeyGenerator.GetPrivateKeyPEM()
+	if err != nil {
+		log.Errorf("Failed to get private key: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusInternalServerError)
+		return
+	}
 	if err := s.Datastore.CreateUser(r.Context(), newUser); err != nil {
 		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusBadRequest)
 		log.Errorf("Failed to create user in datastore, got err=%v", err)
+		return
+	}
+	if err := s.Redis.Set(strings.ToLower(username), privateKeyPEM, time.Duration(0)).Err(); err != nil {
+		log.Errorf("Failed to write private key: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(200)
@@ -617,13 +627,7 @@ func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) readPrivateKey(actor string) (string, error) {
-	path := filepath.Join(s.Keys, fmt.Sprintf("%s_private.pem", actor))
-	log.Infof("Loading Path=%q", path)
-	privateKeyPEM, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	return string(privateKeyPEM), nil
+	return s.Redis.Get(strings.ToLower(actor)).Result()
 }
 
 func createToken(username string, expirationTime time.Time) (string, error) {
