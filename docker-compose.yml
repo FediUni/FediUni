@@ -6,18 +6,27 @@ services:
       context: .
     container_name: fediuni-xyz
     ports:
-      - 8080:8080
+      - "8080:8080"
     secrets:
       - config
-    volumes:
-      - keys:/keys
     deploy:
       restart_policy:
         condition: on-failure
+    depends_on:
+      - redis
+    links:
+      - redis
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis:/data
+    command: redis-server --requirepass ${REDIS_PASSWORD}
 
 secrets:
   config:
     file: config.yaml
 
 volumes:
-  keys:
+  redis:

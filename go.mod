@@ -3,9 +3,12 @@ module github.com/FediUni/FediUni
 go 1.17
 
 require (
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/go-chi/chi/v5 v5.0.5
 	github.com/go-chi/httprate v0.5.2
+	github.com/go-chi/jwtauth v1.2.0
 	github.com/go-fed/activity v1.0.0
+	github.com/go-fed/httpsig v0.1.1-0.20190914113940-c2de3672e5b5
 	github.com/golang/glog v1.0.0
 	github.com/google/go-cmp v0.5.6
 	github.com/spf13/viper v1.10.1
@@ -15,10 +18,8 @@ require (
 
 require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
-	github.com/go-chi/jwtauth v1.2.0 // indirect
-	github.com/go-fed/httpsig v0.1.1-0.20190914113940-c2de3672e5b5 // indirect
+	github.com/go-redis/redis v6.15.9+incompatible // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/goccy/go-json v0.3.5 // indirect
 	github.com/golang/snappy v0.0.1 // indirect

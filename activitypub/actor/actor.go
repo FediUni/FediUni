@@ -21,20 +21,21 @@ type Person vocab.ActivityStreamsPerson
 type PublicKey vocab.W3IDSecurityV1PublicKey
 
 type PKCS1KeyGenerator struct {
-	PrivateKey *bytes.Buffer
-	PublicKey  *bytes.Buffer
+	PrivateKeyPEM *bytes.Buffer
+	PublicKeyPEM  *bytes.Buffer
 }
 
 func NewPKCS1KeyGenerator() *PKCS1KeyGenerator {
 	return &PKCS1KeyGenerator{
-		PrivateKey: &bytes.Buffer{},
-		PublicKey:  &bytes.Buffer{},
+		PrivateKeyPEM: &bytes.Buffer{},
+		PublicKeyPEM:  &bytes.Buffer{},
 	}
 }
 
 type KeyGenerator interface {
 	GenerateKeyPair() (string, string, error)
 	WritePrivateKey(string) error
+	GetPrivateKeyPEM() ([]byte, error)
 }
 
 type PersonGenerator struct {
@@ -137,19 +138,26 @@ func (g *PKCS1KeyGenerator) GenerateKeyPair() (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate private key: got err=%v", err)
 	}
-	if err = pem.Encode(g.PrivateKey, &pem.Block{
+	if err = pem.Encode(g.PrivateKeyPEM, &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 	}); err != nil {
 		return "", "", fmt.Errorf("failed to encode RSA private key in PEM format: got err=%v", err)
 	}
-	if err = pem.Encode(g.PublicKey, &pem.Block{
+	if err = pem.Encode(g.PublicKeyPEM, &pem.Block{
 		Type:  "RSA PUBLIC KEY",
 		Bytes: x509.MarshalPKCS1PublicKey(&privateKey.PublicKey),
 	}); err != nil {
 		return "", "", fmt.Errorf("failed to encode RSA public key in PEM format: got err=%v", err)
 	}
-	return g.PrivateKey.String(), g.PublicKey.String(), nil
+	return g.PrivateKeyPEM.String(), g.PublicKeyPEM.String(), nil
+}
+
+func (g *PKCS1KeyGenerator) GetPrivateKeyPEM() ([]byte, error) {
+	if g.PrivateKeyPEM.Len() == 0 {
+		return nil, fmt.Errorf("private key has not been generated")
+	}
+	return g.PrivateKeyPEM.Bytes(), nil
 }
 
 func (g *PKCS1KeyGenerator) WritePrivateKey(privateKeyPath string) error {
@@ -158,7 +166,7 @@ func (g *PKCS1KeyGenerator) WritePrivateKey(privateKeyPath string) error {
 		return fmt.Errorf("failed to create private pem file: got err=%v", err)
 	}
 	defer privatePem.Close()
-	if _, err := g.PrivateKey.WriteTo(privatePem); err != nil {
+	if _, err := g.PrivateKeyPEM.WriteTo(privatePem); err != nil {
 		return fmt.Errorf("failed to write private key to path=%q: got err=%v", privateKeyPath, err)
 	}
 	return nil
