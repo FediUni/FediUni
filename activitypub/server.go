@@ -503,11 +503,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err != nil {
 		return fmt.Errorf("failed to create Accept HTTP request: got err=%v", err)
 	}
-	pem, err := s.readPrivateKey(person.GetActivityStreamsPreferredUsername().GetXMLSchemaString())
-	if err != nil {
-		return fmt.Errorf("failed to read private key: got err=%v", err)
-	}
-	privateKey, err := validation.ParsePrivateKeyFromPEMBlock(pem)
+	privateKey, err := s.readPrivateKey(person.GetActivityStreamsPreferredUsername().GetXMLSchemaString())
 	if err != nil {
 		return fmt.Errorf("failed to read private key: got err=%v", err)
 	}
