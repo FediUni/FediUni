@@ -277,6 +277,7 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to unmarshal request body: got err=%v", err), http.StatusBadRequest)
 		return
 	}
+	log.Infof("Incoming Request Headers=%v", r.Header)
 	var m map[string]interface{}
 	if err := json.Unmarshal(raw, &m); err != nil {
 		log.Errorf("failed to unmarshal JSON from request body: got err=%v", err)
