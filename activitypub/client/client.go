@@ -77,10 +77,10 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 	defer res.Body.Close()
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return fmt.Errorf("Failed to read from response body: got err=%v", err)
+		return fmt.Errorf("failed to read from response body: got err=%v", err)
 	}
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to post object to inbox=%q: got StatusCode=%d, Body=%v", inbox.String(), res.StatusCode, body)
+		return fmt.Errorf("failed to post object to inbox=%q: got StatusCode=%d, Body=%s", inbox.String(), res.StatusCode, string(body))
 	}
 	return nil
 }
