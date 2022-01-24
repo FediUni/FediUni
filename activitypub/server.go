@@ -73,7 +73,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse instanceURL=%q: got err=%v", instanceURL, err)
 	}
-	tokenAuth = jwtauth.New("HS256", secret, nil)
+	tokenAuth = jwtauth.New("HS256", []byte(secret), nil)
 	s := &Server{
 		URL:          url,
 		Keys:         keys,
