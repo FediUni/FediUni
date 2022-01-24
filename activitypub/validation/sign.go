@@ -32,10 +32,13 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	headersToSign := []string{httpsig.RequestTarget, "Host", "Date", "Digest"}
 	signer, algorithm, err := httpsig.NewSigner(prefs, httpsig.DigestSha256, headersToSign, httpsig.Signature)
 	log.Infof("Algorithm=%q for Signing", algorithm)
-	if err != nil {
+	if err := signer.SignRequest(privateKey, keyID, r, body); err != nil {
 		return nil, err
 	}
-	if err := signer.SignRequest(privateKey, keyID, r, body); err != nil {
+	log.Infof("Signer calculated digest as %q", r.Header.Get("Digest"))
+	_, _ = CalculateDigestHeader(r)
+	log.Infof("Calculated Digest as %q", r.Header.Get("Digest"))
+	if err != nil {
 		return nil, err
 	}
 	return r, nil
