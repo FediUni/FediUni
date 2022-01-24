@@ -392,6 +392,11 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorToFollow), http.StatusInternalServerError)
 		return
 	}
+	if object == nil {
+		log.Errorf("failed to fetch remote object: got %v", object)
+		http.Error(w, fmt.Sprintf("failed to resolve remote actor=%q", actorToFollow), http.StatusInternalServerError)
+		return
+	}
 	if err := resolver.Resolve(ctx, object); err != nil {
 		log.Errorf("failed to resolve actor=%q: got err=%v", actorToFollow, err)
 		http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorToFollow), http.StatusInternalServerError)
