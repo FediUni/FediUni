@@ -73,6 +73,7 @@ func Digest(next http.Handler) http.Handler {
 		}
 		if bytes.Compare(hashCalculated, hashReceived) != 0 {
 			log.Errorf("hash calculated is different to the hash received")
+			http.Error(w, fmt.Sprintf("failed to validate digest header"), http.StatusBadRequest)
 			return
 		}
 		r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
