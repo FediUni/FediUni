@@ -36,6 +36,7 @@ type Datastore interface {
 	GetActorByUsername(context.Context, string) (actor.Person, error)
 	GetActivityByObjectID(context.Context, string, string) (vocab.Type, error)
 	GetActivityByActivityID(context.Context, string) (vocab.Type, error)
+	GetFollowersByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	CreateUser(context.Context, *user.User) error
 	GetUserByUsername(context.Context, string) (*user.User, error)
 	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
@@ -97,6 +98,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	s.Router.Get("/.well-known/webfinger", s.webfinger)
 	s.Router.Get("/actor/{username}", s.getActor)
 	s.Router.Get("/actor/{username}/inbox", s.getActorInbox)
+	s.Router.Get("/actor/{username}/followers", s.getFollowers)
 	s.Router.Get("/activity/{activityID}", s.getActivity)
 	s.Router.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	s.Router.Get("/actor/{username}/outbox", s.getActorOutbox)
@@ -147,6 +149,32 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write(m)
+}
+
+func (s *Server) getFollowers(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		http.Error(w, "username is unspecified", http.StatusBadRequest)
+		return
+	}
+	followers, err := s.Datastore.GetFollowersByUsername(r.Context(), username)
+	if err != nil {
+		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	m, err := streams.Serialize(followers)
+	if err != nil {
+		log.Errorf("failed to serialize activity : got err=%v", err)
+		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	marshalledActivity, err := json.Marshal(m)
+	if err != nil {
+		log.Errorf("failed to marshal activity to JSON: got err=%v", err)
+		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	w.Write(marshalledActivity)
 }
 
 func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {

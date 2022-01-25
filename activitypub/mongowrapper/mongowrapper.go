@@ -51,6 +51,42 @@ func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (ac
 	return actor, nil
 }
 
+// GetFollowersByUsername returns an OrderedCollection of Follower IDs.
+func (d *Datastore) GetFollowersByUsername(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
+	actor, err := d.GetActorByUsername(ctx, username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load actor username=%q: got err=%v", username, err)
+	}
+	actors := d.client.Database("FediUni").Collection("followers")
+	filter := bson.D{{"_id", actor.GetJSONLDId().Get().String()}}
+	var m map[string]interface{}
+	if err := actors.FindOne(ctx, filter).Decode(&m); err != nil {
+		return nil, err
+	}
+	var listOfFollowers []string
+	switch f := m["followers"]; f.(type) {
+	case []string:
+		listOfFollowers = f.([]string)
+	default:
+		return nil, fmt.Errorf("failed to unmarshal followers to []string")
+	}
+	followers := streams.NewActivityStreamsOrderedCollection()
+	orderedFollowers := streams.NewActivityStreamsOrderedItemsProperty()
+	for _, follower := range listOfFollowers {
+		followerID, err := url.Parse(follower)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %q as URL: got err=%v", follower, err)
+		}
+		p := streams.NewActivityStreamsPerson()
+		idProperty := streams.NewJSONLDIdProperty()
+		idProperty.Set(followerID)
+		p.SetJSONLDId(idProperty)
+		orderedFollowers.AppendActivityStreamsPerson(p)
+	}
+	followers.SetActivityStreamsOrderedItems(orderedFollowers)
+	return followers, nil
+}
+
 // GetActorByActorID returns an instance of Person from Mongo using URI.
 func (d *Datastore) GetActorByActorID(ctx context.Context, actorID string) (actor.Person, error) {
 	actors := d.client.Database("FediUni").Collection("actors")
