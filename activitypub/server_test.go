@@ -75,6 +75,10 @@ func (d *TestDatastore) GetUserByUsername(ctx context.Context, username string) 
 	return nil, fmt.Errorf("GetUserByUsername() is unimplemented")
 }
 
+func (d *TestDatastore) GetFollowersByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error) {
+	return nil, fmt.Errorf("GetFollowersByUsername() is unimplemented")
+}
+
 type TestKeyGenerator struct{}
 
 func (g *TestKeyGenerator) GenerateKeyPair() (string, string, error) {
