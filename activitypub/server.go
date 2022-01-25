@@ -285,6 +285,11 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	activityRequest, err := streams.ToType(ctx, m)
+	if err != nil {
+		log.Errorf("Failed to convert JSON to a vocab.Type: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to unmarshal activity"), http.StatusBadRequest)
+		return
+	}
 	log.Infof("Determining Activity Type: got=%q", activityRequest.GetTypeName())
 	switch typeName := activityRequest.GetTypeName(); typeName {
 	case "Follow":
