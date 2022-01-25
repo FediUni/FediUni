@@ -1,12 +1,10 @@
 package activitypub
 
 import (
-	"bytes"
 	"context"
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/client"
 	"github.com/FediUni/FediUni/activitypub/follower"
 	"github.com/FediUni/FediUni/activitypub/undo"
@@ -473,10 +471,6 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 		return fmt.Errorf("actor ID is unspecified: got=%q", actorID)
 	}
 	accept := follower.PrepareAcceptActivity(follow, actorID)
-	marshalledActivity, err := activity.JSON(accept)
-	if err != nil {
-		return fmt.Errorf("failed to load person: got err=%v", err)
-	}
 	// Ensure Actor exists on this server before adding activity.
 	person, err := s.Datastore.GetActorByActorID(ctx, actorID.String())
 	if err != nil {
@@ -503,35 +497,17 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if remoteActor.GetActivityStreamsInbox() == nil {
 		return fmt.Errorf("invalid actor=%q retrieved! inbox property does not exist", followerID.String())
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, remoteActor.GetActivityStreamsInbox().GetIRI().String(), bytes.NewBuffer(marshalledActivity))
-	request.Header.Add("Content-Type", "application/ld+json")
-	if err != nil {
-		return fmt.Errorf("failed to create Accept HTTP request: got err=%v", err)
-	}
 	privateKey, err := s.readPrivateKey(person.GetActivityStreamsPreferredUsername().GetXMLSchemaString())
 	if err != nil {
 		return fmt.Errorf("failed to read private key: got err=%v", err)
 	}
-	request, err = validation.SignRequestWithDigest(request, s.URL, actorID.String(), privateKey, marshalledActivity)
-	if err != nil {
-		return fmt.Errorf("failed to sign accept request: got err=%v", err)
+	log.Infof("Sending Accept Request to %q", remoteActor.GetActivityStreamsInbox().GetIRI().String())
+	if err := s.Client.PostToInbox(ctx, remoteActor.GetActivityStreamsInbox().GetIRI(), accept, actorID.String(), privateKey); err != nil {
+		return fmt.Errorf("failed to post to actor Inbox=%q: got err=%v", remoteActor.GetActivityStreamsInbox().GetIRI().String(), err)
 	}
 	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
 		return fmt.Errorf("failed to add follower to actor: got err=%v", err)
 	}
-	log.Infof("Sending Accept Request to %q", remoteActor.GetActivityStreamsInbox().GetIRI().String())
-	log.Infof("Accept Request Body=%v", string(marshalledActivity))
-	res, err := http.DefaultClient.Do(request)
-	defer res.Body.Close()
-	if err != nil {
-		return fmt.Errorf("failed to send accept request: got err=%v", err)
-	}
-	body, _ := ioutil.ReadAll(res.Body)
-	if res.StatusCode != 200 {
-		log.Infoln(res)
-		return fmt.Errorf("accept request has failed: %q", string(body))
-	}
-	log.Infof("AcceptActivity successfully POSTed: got=%v StatusCode=%d", string(body), res.StatusCode)
 	return nil
 }
 

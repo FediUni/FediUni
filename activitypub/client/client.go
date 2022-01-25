@@ -80,7 +80,7 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 	if err != nil {
 		return fmt.Errorf("failed to read from response body: got err=%v", err)
 	}
-	if res.StatusCode != http.StatusOK {
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("failed to post object to inbox=%q: got StatusCode=%d, Body=%s", inbox.String(), res.StatusCode, string(body))
 	}
 	return nil
