@@ -5,6 +5,13 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"strings"
+	"text/template"
+	"time"
+
 	"github.com/FediUni/FediUni/activitypub/client"
 	"github.com/FediUni/FediUni/activitypub/follower"
 	"github.com/FediUni/FediUni/activitypub/undo"
@@ -16,12 +23,6 @@ import (
 	"github.com/go-redis/redis"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/bcrypt"
-	"io/ioutil"
-	"net/http"
-	"net/url"
-	"strings"
-	"text/template"
-	"time"
 
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
@@ -33,7 +34,8 @@ import (
 
 type Datastore interface {
 	GetActorByUsername(context.Context, string) (actor.Person, error)
-	GetActivity(context.Context, string, string) (vocab.Type, error)
+	GetActivityByObjectID(context.Context, string, string) (vocab.Type, error)
+	GetActivityByActivityID(context.Context, string) (vocab.Type, error)
 	CreateUser(context.Context, *user.User) error
 	GetUserByUsername(context.Context, string) (*user.User, error)
 	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
@@ -152,7 +154,7 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 	if activityID == "" {
 		http.Error(w, "activityID is unspecified", http.StatusBadRequest)
 	}
-	activity, err := s.Datastore.GetActivity(r.Context(), activityID, s.URL.String())
+	activity, err := s.Datastore.GetActivityByObjectID(r.Context(), activityID, s.URL.String())
 	if err != nil {
 		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
 		http.Error(w, "failed to load activity", http.StatusNotFound)
@@ -295,6 +297,12 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		if err := s.undo(ctx, activityRequest); err != nil {
 			log.Errorf("Failed to undo specified Activity: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to undo activity"), http.StatusInternalServerError)
+			return
+		}
+	case "Accept":
+		if err := s.handleAccept(ctx, activityRequest); err != nil {
+			log.Errorf("Failed to handle Accept Activity: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to handle Accept activity"), http.StatusInternalServerError)
 			return
 		}
 	default:
@@ -449,6 +457,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
 		return
 	}
+	w.WriteHeader(http.StatusOK)
 	return
 }
 
@@ -544,6 +553,38 @@ func (s *Server) undo(ctx context.Context, activityRequest vocab.Type) error {
 		return fmt.Errorf("undo block activity support is unimplemented")
 	default:
 		return fmt.Errorf("activity is unsupported in the ActivityPub specification")
+	}
+	return nil
+}
+
+func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) error {
+	accept, err := follower.ParseAcceptActivity(ctx, activityRequest)
+	if err != nil {
+		return err
+	}
+	presentedObject := accept.GetActivityStreamsObject()
+	if presentedObject.Empty() {
+		return fmt.Errorf("failed to receive an Object in Accept Activity: got=%v", presentedObject)
+	}
+	objectID := presentedObject.Begin().GetIRI()
+	loadedObject, err := s.Datastore.GetActivityByActivityID(ctx, objectID.String())
+	if err != nil {
+		return fmt.Errorf("failed to load follow Activity=%q: got err=%v", objectID.String(), err)
+	}
+	follow, err := follower.ParseFollowRequest(ctx, loadedObject)
+	if err != nil {
+		return fmt.Errorf("failed parse follow Activity: got err=%v", err)
+	}
+	followerID := follow.GetActivityStreamsActor().Begin().GetIRI()
+	if followerID.String() == "" {
+		return fmt.Errorf("follower ID is unspecified: got=%q", followerID)
+	}
+	actorID := follow.GetActivityStreamsObject().Begin().GetIRI()
+	if actorID.String() == "" {
+		return fmt.Errorf("actor ID is unspecified: got=%q", actorID)
+	}
+	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
+		return fmt.Errorf("failed to add Follower=%q to Actor=%q", followerID.String(), actorID.String())
 	}
 	return nil
 }

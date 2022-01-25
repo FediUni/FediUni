@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/actor"
-	"github.com/FediUni/FediUni/activitypub/user"
-	"github.com/go-fed/activity/streams/vocab"
-	"github.com/google/go-cmp/cmp"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+
+	"github.com/FediUni/FediUni/activitypub/actor"
+	"github.com/FediUni/FediUni/activitypub/user"
+	"github.com/go-fed/activity/streams/vocab"
+	"github.com/google/go-cmp/cmp"
 )
 
 type TestDatastore struct {
@@ -54,8 +55,12 @@ func (d *TestDatastore) AddActivityToSharedInbox(_ context.Context, _ vocab.Type
 	return fmt.Errorf("AddActivityToSharedInbox() is unimplemented")
 }
 
-func (d *TestDatastore) GetActivity(_ context.Context, _ string, _ string) (vocab.Type, error) {
-	return nil, fmt.Errorf("GetActivity() is unimplemented")
+func (d *TestDatastore) GetActivityByObjectID(_ context.Context, _ string, _ string) (vocab.Type, error) {
+	return nil, fmt.Errorf("GetActivityByObjectID() is unimplemented")
+}
+
+func (d *TestDatastore) GetActivityByActivityID(_ context.Context, _ string) (vocab.Type, error) {
+	return nil, fmt.Errorf("GetActivityByObjectID() is unimplemented")
 }
 
 func (d *TestDatastore) AddFollowerToActor(context.Context, string, string) error {

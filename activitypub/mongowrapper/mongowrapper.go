@@ -3,6 +3,9 @@ package mongowrapper
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strings"
+
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
 	"github.com/go-fed/activity/streams"
@@ -12,8 +15,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"net/url"
-	"strings"
 )
 
 // Datastore wraps the MongoDB client and handles MongoDB operations.
@@ -130,13 +131,30 @@ func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab
 	return nil
 }
 
-func (d *Datastore) GetActivity(ctx context.Context, activityID, baseURL string) (vocab.Type, error) {
+func (d *Datastore) GetActivityByObjectID(ctx context.Context, activityID, baseURL string) (vocab.Type, error) {
 	activities := d.client.Database("FediUni").Collection("activities")
 	objectID, err := primitive.ObjectIDFromHex(activityID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ObjectID from Hex=%q: got err=%v", activityID, err)
 	}
 	filter := bson.D{{"_id", objectID}, {"id", fmt.Sprintf("%s/activity/%s", baseURL, activityID)}}
+	var m map[string]interface{}
+	if err := activities.FindOne(ctx, filter).Decode(&m); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, fmt.Errorf("unable to load activity with _id=%q", activityID)
+	}
+	activity, err := streams.ToType(ctx, m)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create JSON vocab.ActivityStreamsObject resolver: got err=%v", err)
+	}
+	return activity, nil
+}
+
+func (d *Datastore) GetActivityByActivityID(ctx context.Context, activityID string) (vocab.Type, error) {
+	activities := d.client.Database("FediUni").Collection("activities")
+	filter := bson.D{{"id", activityID}}
 	var m map[string]interface{}
 	if err := activities.FindOne(ctx, filter).Decode(&m); err != nil {
 		return nil, err
