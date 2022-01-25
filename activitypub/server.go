@@ -159,6 +159,7 @@ func (s *Server) getFollowers(w http.ResponseWriter, r *http.Request) {
 	}
 	followers, err := s.Datastore.GetFollowersByUsername(r.Context(), username)
 	if err != nil {
+		log.Errorf("failed to load followers from Datastore: got err=%v", err)
 		http.Error(w, "failed to load followers", http.StatusInternalServerError)
 		return
 	}
