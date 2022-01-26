@@ -6,14 +6,15 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+
 	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/validation"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	log "github.com/golang/glog"
-	"io/ioutil"
-	"net/http"
-	"net/url"
 )
 
 type Client struct {
@@ -83,6 +84,7 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("failed to post object to inbox=%q: got StatusCode=%d, Body=%s", inbox.String(), res.StatusCode, string(body))
 	}
+	log.Infof("Successfully POSTed to Inbox=%q: got StatusCode=%d and Body=%q", inbox.String(), res.StatusCode, string(body))
 	return nil
 }
 
