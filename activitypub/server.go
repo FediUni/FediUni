@@ -403,13 +403,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("invalid follow request presented: expected @username@domain format"), http.StatusBadRequest)
 		return
 	}
-	webfingerURL, err := url.Parse(fmt.Sprintf("https://%s/.well-known/webfinger", domain))
-	if err != nil {
-		log.Errorf("failed to parse URL from domain=%q: got err=%v", domain, err)
-		http.Error(w, fmt.Sprintf("invalid follow request presented: invalid domain presented"), http.StatusBadRequest)
-		return
-	}
-	res, err := s.Client.WebfingerLookup(ctx, webfingerURL, usernameToFollow)
+	res, err := s.Client.WebfingerLookup(ctx, domain, usernameToFollow)
 	if err != nil {
 		log.Errorf("failed to perform webfinger lookup: got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to perform webfinger lookup"), http.StatusInternalServerError)

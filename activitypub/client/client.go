@@ -87,9 +87,13 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 	return nil
 }
 
-func (c *Client) WebfingerLookup(ctx context.Context, iri *url.URL, actorID string) ([]byte, error) {
-	log.Infof("Performing Webfinger Lookup: %q", iri.String())
-	res, err := http.DefaultClient.Get(fmt.Sprintf("%s?resource=%s", iri.String(), fmt.Sprintf("acct:%s@%s", actorID, iri.Host)))
+func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID string) ([]byte, error) {
+	webfingerURL, err := url.Parse(fmt.Sprintf("https://%s/.well-known/webfinger?resource=%s", domain, fmt.Sprintf("acct:%s@%s", actorID, domain)))
+	if err != nil {
+		return err
+	}
+	log.Infof("Performing Webfinger Lookup: %q", webfingerURL.String())
+	res, err := http.DefaultClient.Get(webfingerURL.String())
 	if err != nil {
 		return nil, err
 	}
