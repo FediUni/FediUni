@@ -54,12 +54,11 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL) (vocab.Typ
 }
 
 func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.Type, keyID string, privateKey *rsa.PrivateKey) error {
-	log.Infof("Marshalling Activity")
+	log.Infof("Marshalling Activity...")
 	marshalledActivity, err := activity.JSON(object)
 	if err != nil {
 		return err
 	}
-	log.Infof("MarshalledActivity = %q", string(marshalledActivity))
 	log.Infof("Creating Request to URL=%q", inbox.String())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, inbox.String(), bytes.NewBuffer(marshalledActivity))
 	if err != nil {
