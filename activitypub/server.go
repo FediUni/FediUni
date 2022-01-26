@@ -147,6 +147,7 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("failed to marshal actor with ID=%q: got err=%v", username, err)
 		http.Error(w, "failed to load actor", http.StatusInternalServerError)
 	}
+	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(m)
 }
@@ -201,6 +202,7 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load activity", http.StatusNotFound)
 		return
 	}
+	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledActivity)
 }
@@ -287,6 +289,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		Expires:  expirationTime,
 		HttpOnly: true,
 	})
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
@@ -295,6 +298,7 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+	w.Header().Add("Content-Type", "application/activity+json")
 	http.Error(w, "actor inbox lookup is unimplemented", http.StatusNotImplemented)
 }
 
