@@ -486,7 +486,13 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
 		return
 	}
-	if err := s.Client.PostToInbox(ctx, inboxURL, followActivity, person.GetJSONLDId().Get().String(), privateKey); err != nil {
+	if person.GetW3IDSecurityV1PublicKey().Empty() {
+		log.Errorf("failed to get public key ID: got=%v", person.GetW3IDSecurityV1PublicKey())
+		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
+		return
+	}
+	publicKeyID := person.GetW3IDSecurityV1PublicKey().Begin().Get().GetJSONLDId()
+	if err := s.Client.PostToInbox(ctx, inboxURL, followActivity, publicKeyID.Get().String(), privateKey); err != nil {
 		log.Errorf("failed to post to inbox: got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
 		return
@@ -545,7 +551,11 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 		return fmt.Errorf("failed to read private key: got err=%v", err)
 	}
 	log.Infof("Sending Accept Request to %q", remoteActor.GetActivityStreamsInbox().GetIRI().String())
-	if err := s.Client.PostToInbox(ctx, remoteActor.GetActivityStreamsInbox().GetIRI(), accept, actorID.String(), privateKey); err != nil {
+	if person.GetW3IDSecurityV1PublicKey().Empty() {
+		return fmt.Errorf("Public Key is empty on Actor=%q", person.GetJSONLDId().Get().String())
+	}
+	publicKeyID := person.GetW3IDSecurityV1PublicKey().Begin().Get().GetJSONLDId()
+	if err := s.Client.PostToInbox(ctx, remoteActor.GetActivityStreamsInbox().GetIRI(), accept, publicKeyID.Get().String(), privateKey); err != nil {
 		return fmt.Errorf("failed to post to actor Inbox=%q: got err=%v", remoteActor.GetActivityStreamsInbox().GetIRI().String(), err)
 	}
 	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {

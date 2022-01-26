@@ -3,12 +3,13 @@ package validation
 import (
 	"crypto/rsa"
 	"fmt"
-	log "github.com/golang/glog"
-	"github.com/spacemonkeygo/httpsig"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	log "github.com/golang/glog"
+	"github.com/spacemonkeygo/httpsig"
 )
 
 func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateKey *rsa.PrivateKey, body []byte) (*http.Request, error) {
