@@ -609,8 +609,10 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 	if presentedObject.Empty() {
 		return fmt.Errorf("failed to receive an Object in Accept Activity: got=%v", presentedObject)
 	}
-	if objectID
 	objectID := presentedObject.Begin().GetIRI()
+	if presentedObject.Begin().GetIRI() == nil {
+		return fmt.Errorf("failed to receive an Object with an IRI: got=%v", objectID)
+	}
 	loadedObject, err := s.Datastore.GetActivityByActivityID(ctx, objectID.String())
 	if err != nil {
 		return fmt.Errorf("failed to load follow Activity=%q: got err=%v", objectID.String(), err)
