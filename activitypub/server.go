@@ -469,14 +469,15 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	inboxURL := inbox.GetIRI()
 	followActivity := streams.NewActivityStreamsFollow()
 	actorProperty := streams.NewActivityStreamsActorProperty()
-	actorProperty.AppendActivityStreamsPerson(personToFollow)
+	actorProperty.AppendActivityStreamsPerson(person)
 	followActivity.SetActivityStreamsActor(actorProperty)
 	objectProperty := streams.NewActivityStreamsObjectProperty()
-	objectProperty.AppendActivityStreamsPerson(person)
+	objectProperty.AppendActivityStreamsPerson(personToFollow)
 	followActivity.SetActivityStreamsObject(objectProperty)
 	if err := s.Datastore.AddActivityToSharedInbox(ctx, followActivity, s.URL.String()); err != nil {
 		log.Errorf("Failed to add Follow Activity to Datastore: got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
+		return
 	}
 	privateKey, err := s.readPrivateKey(username)
 	if err != nil {
