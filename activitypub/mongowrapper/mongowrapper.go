@@ -170,7 +170,7 @@ func (d *Datastore) GetActivityByObjectID(ctx context.Context, activityID, baseU
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ObjectID from Hex=%q: got err=%v", activityID, err)
 	}
-	filter := bson.D{{"_id", objectID}, {"id", fmt.Sprintf("%s/activity/%s", baseURL, activityID)}}
+	filter := bson.D{{"_id", objectID}}
 	var m map[string]interface{}
 	if err := activities.FindOne(ctx, filter).Decode(&m); err != nil {
 		return nil, err
