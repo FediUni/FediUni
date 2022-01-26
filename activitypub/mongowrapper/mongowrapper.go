@@ -22,6 +22,10 @@ type Datastore struct {
 	client *mongo.Client
 }
 
+type followersCollection struct {
+	Followers []string `bson:"followers"`
+}
+
 // NewDatastore returns an initialized Datastore which handles MongoDB operations.
 func NewDatastore(client *mongo.Client) (*Datastore, error) {
 	return &Datastore{
@@ -59,20 +63,13 @@ func (d *Datastore) GetFollowersByUsername(ctx context.Context, username string)
 	}
 	actors := d.client.Database("FediUni").Collection("followers")
 	filter := bson.D{{"_id", actor.GetJSONLDId().Get().String()}}
-	var m map[string]interface{}
-	if err := actors.FindOne(ctx, filter).Decode(&m); err != nil {
+	var f followersCollection
+	if err := actors.FindOne(ctx, filter).Decode(&f); err != nil {
 		return nil, err
-	}
-	var listOfFollowers []string
-	switch f := m["followers"]; f.(type) {
-	case []string:
-		listOfFollowers = f.([]string)
-	default:
-		return nil, fmt.Errorf("failed to unmarshal followers to []string")
 	}
 	followers := streams.NewActivityStreamsOrderedCollection()
 	orderedFollowers := streams.NewActivityStreamsOrderedItemsProperty()
-	for _, follower := range listOfFollowers {
+	for _, follower := range f.Followers {
 		followerID, err := url.Parse(follower)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse %q as URL: got err=%v", follower, err)
