@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"github.com/microcosm-cc/bluemonday"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -55,6 +56,7 @@ type Server struct {
 	Redis        *redis.Client
 	KeyGenerator actor.KeyGenerator
 	Client       *client.Client
+	Policy       *bluemonday.Policy
 }
 
 type WebfingerResponse struct {
@@ -88,6 +90,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 			Addr:     "redis:6379",
 			Password: viper.GetString("REDIS_PASSWORD"),
 		}),
+		Policy: bluemonday.UGCPolicy(),
 	}
 	s.Router = chi.NewRouter()
 
@@ -531,7 +534,19 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if creatorID.String() == "" {
 		return fmt.Errorf("actor ID is unspecified: got=%q", creatorID.String())
 	}
-	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, receiverID)
+	for iter := create.GetActivityStreamsObject().Begin(); iter.HasAny(); iter = iter.Next() {
+		switch {
+		case iter.IsActivityStreamsNote():
+			note := iter.GetActivityStreamsNote()
+			content := note.GetActivityStreamsContent()
+			for c := content.Begin(); c.HasAny(); c = c.Next() {
+				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
+			}
+		default:
+			return fmt.Errorf("non-note activity presented")
+		}
+	}
+	return s.Datastore.AddActivityToActorInbox(ctx, create, receiverID)
 }
 
 // handleFollowRequest allows the actor to follow the requested person on this instance.
