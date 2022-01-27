@@ -676,13 +676,25 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 	if err != nil {
 		return fmt.Errorf("failed parse follow Activity: got err=%v", err)
 	}
-	followerID := follow.GetActivityStreamsActor().Begin().GetIRI()
-	if followerID.String() == "" {
-		return fmt.Errorf("follower ID is unspecified: got=%q", followerID)
+	var followerID *url.URL
+	switch iter := follow.GetActivityStreamsActor().Begin(); {
+	case iter.IsActivityStreamsPerson():
+		followerID = iter.GetActivityStreamsPerson().GetJSONLDId().Get()
+	default:
+		return fmt.Errorf("non person actor specified in Actor property")
 	}
-	actorID := follow.GetActivityStreamsObject().Begin().GetIRI()
-	if actorID.String() == "" {
-		return fmt.Errorf("actor ID is unspecified: got=%q", actorID)
+	if followerID != nil {
+		return fmt.Errorf("follower ID is unspecified: got=%v", followerID)
+	}
+	var actorID *url.URL
+	switch iter := follow.GetActivityStreamsObject().Begin(); {
+	case iter.IsActivityStreamsPerson():
+		actorID = iter.GetActivityStreamsPerson().GetJSONLDId().Get()
+	default:
+		return fmt.Errorf("non person actor specified in Object property")
+	}
+	if actorID != nil {
+		return fmt.Errorf("follower ID is unspecified: got=%v", followerID)
 	}
 	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
 		return fmt.Errorf("failed to add Follower=%q to Actor=%q", followerID.String(), actorID.String())
