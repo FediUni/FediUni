@@ -227,3 +227,18 @@ func (d *Datastore) RemoveFollowerFromActor(ctx context.Context, actorID, follow
 	log.Infof("Inserted Document: got=%v", res)
 	return nil
 }
+
+func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.Type, userID string) error {
+	inbox := d.client.Database("FediUni").Collection("inbox")
+	m, err := streams.Serialize(activity)
+	if err != nil {
+		return err
+	}
+	m["recipient"] = userID
+	res, err := inbox.InsertOne(ctx, m)
+	if err != nil {
+		return err
+	}
+	log.Infof("Inserted Activity: got=%v", res)
+	return nil
+}
