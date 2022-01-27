@@ -12,6 +12,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/client"
 	"github.com/FediUni/FediUni/activitypub/follower"
 	"github.com/FediUni/FediUni/activitypub/undo"
@@ -43,6 +44,7 @@ type Datastore interface {
 	AddFollowerToActor(context.Context, string, string) error
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
+	AddActivityToActorInbox(context.Context, vocab.Type, string) error
 }
 
 type Server struct {
@@ -304,6 +306,16 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	userID, err := url.Parse(fmt.Sprintf("%s/actor/%s", s.URL.String(), username))
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 	raw, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Errorf("failed to unmarshal JSON from request body: got err=%v", err)
@@ -325,6 +337,12 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Infof("Determining Activity Type: got=%q", activityRequest.GetTypeName())
 	switch typeName := activityRequest.GetTypeName(); typeName {
+	case "Create":
+		if err := s.handleCreateRequest(ctx, activityRequest, userID.String()); err != nil {
+			log.Errorf("Failed to handle Create Activity: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to process create activity"), http.StatusInternalServerError)
+			return
+		}
 	case "Follow":
 		if err := s.handleFollowRequest(ctx, activityRequest); err != nil {
 			log.Errorf("Failed to add follower to user: got err=%v", err)
@@ -498,6 +516,22 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	return
+}
+
+func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.Type, receiverID string) error {
+	log.Infoln("Received Create Activity")
+	create, err := activity.ParseCreateActivity(ctx, activityRequest)
+	if err != nil {
+		return err
+	}
+	if create.GetActivityStreamsActor().Empty() {
+		return fmt.Errorf("failed to receive Actor in Create activity")
+	}
+	creatorID := create.GetActivityStreamsActor().Begin().GetIRI()
+	if creatorID.String() == "" {
+		return fmt.Errorf("actor ID is unspecified: got=%q", creatorID.String())
+	}
+	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, receiverID)
 }
 
 // handleFollowRequest allows the actor to follow the requested person on this instance.

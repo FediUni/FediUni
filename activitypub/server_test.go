@@ -79,6 +79,10 @@ func (d *TestDatastore) GetFollowersByUsername(context.Context, string) (vocab.A
 	return nil, fmt.Errorf("GetFollowersByUsername() is unimplemented")
 }
 
+func (d *TestDatastore) AddActivityToActorInbox(context.Context, vocab.Type, string) error {
+	return fmt.Errorf("AddActivityToActorInbox() is unimplemented")
+}
+
 type TestKeyGenerator struct{}
 
 func (g *TestKeyGenerator) GenerateKeyPair() (string, string, error) {
