@@ -534,12 +534,12 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if creatorID.String() == "" {
 		return fmt.Errorf("actor ID is unspecified: got=%q", creatorID.String())
 	}
-	for iter := create.GetActivityStreamsObject().Begin(); iter.HasAny(); iter = iter.Next() {
+	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		switch {
 		case iter.IsActivityStreamsNote():
 			note := iter.GetActivityStreamsNote()
 			content := note.GetActivityStreamsContent()
-			for c := content.Begin(); c.HasAny(); c = c.Next() {
+			for c := content.Begin(); c != nil; c = c.Next() {
 				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
 			}
 		default:
