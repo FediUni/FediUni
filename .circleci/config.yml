@@ -42,7 +42,7 @@ jobs:
     docker:
       - image: arvindr226/alpine-ssh
     steps:
-      - run: ssh -oStrictHostKeyChecking=no -v $USER@$IP "./nginx/deploy.sh"
+      - run: ssh -oStrictHostKeyChecking=no -v $USER@$IP "sh ./nginx/deploy.sh"
   buildimage:
     executor: docker-publisher
     steps:
