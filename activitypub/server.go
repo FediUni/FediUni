@@ -46,7 +46,7 @@ type Datastore interface {
 	AddFollowerToActor(context.Context, string, string) error
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
-	AddActivityToActorInbox(context.Context, vocab.Type, string) error
+	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
 	GetActorInbox(context.Context, string) ([]vocab.Type, error)
 }
 
@@ -575,6 +575,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if creatorID.String() == "" {
 		return fmt.Errorf("actor ID is unspecified: got=%q", creatorID.String())
 	}
+	var objects []vocab.Type
 	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		switch {
 		case iter.IsActivityStreamsNote():
@@ -583,11 +584,12 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 			for c := content.Begin(); c != nil; c = c.Next() {
 				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
 			}
+			objects = append(objects, note)
 		default:
 			return fmt.Errorf("non-note activity presented")
 		}
 	}
-	return s.Datastore.AddActivityToActorInbox(ctx, create, receiverID)
+	return s.Datastore.AddObjectsToActorInbox(ctx, objects, receiverID)
 }
 
 // handleFollowRequest allows the actor to follow the requested person on this instance.

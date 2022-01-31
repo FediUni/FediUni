@@ -228,18 +228,20 @@ func (d *Datastore) RemoveFollowerFromActor(ctx context.Context, actorID, follow
 	return nil
 }
 
-func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.Type, userID string) error {
+func (d *Datastore) AddObjectsToActorInbox(ctx context.Context, objects []vocab.Type, userID string) error {
 	inbox := d.client.Database("FediUni").Collection("inbox")
-	m, err := streams.Serialize(activity)
-	if err != nil {
-		return err
+	for _, object := range objects {
+		m, err := streams.Serialize(object)
+		if err != nil {
+			return err
+		}
+		m["recipient"] = userID
+		res, err := inbox.InsertOne(ctx, m)
+		if err != nil {
+			return err
+		}
+		log.Infof("Inserted Activity: got=%v", res)
 	}
-	m["recipient"] = userID
-	res, err := inbox.InsertOne(ctx, m)
-	if err != nil {
-		return err
-	}
-	log.Infof("Inserted Activity: got=%v", res)
 	return nil
 }
 
