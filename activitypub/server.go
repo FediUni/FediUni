@@ -284,7 +284,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expirationTime := time.Now().Add(72 * time.Hour)
-	token, err := createToken(username, expirationTime)
+	token, err := createToken(username, fmt.Sprintf("%s/actor/%s", s.URL.String(), username), expirationTime)
 	if err != nil {
 		log.Errorf("failed to generate JWT: got err=%v", err)
 		http.Error(w, fmt.Sprint("failed to generate JWT"), http.StatusInternalServerError)
@@ -301,8 +301,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	actorID := chi.URLParam(r, "username")
-	if actorID == "" {
+	username := chi.URLParam(r, "username")
+	if username == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -311,19 +311,19 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("Failed to read from JWT: got err=%v", err)
 		return
 	}
-	rawUsername := claims["userID"]
+	rawUserID := claims["userID"]
 	var userID string
-	switch rawUsername.(type) {
+	switch rawUserID.(type) {
 	case string:
-		userID = rawUsername.(string)
+		userID = rawUserID.(string)
 	default:
-		log.Errorf("Invalid actor ID presented: got %v", rawUsername)
-		http.Error(w, fmt.Sprintf("failed to load username"), http.StatusUnauthorized)
+		log.Errorf("Invalid actor ID presented: got %v", rawUserID)
+		http.Error(w, fmt.Sprintf("failed to load userID from JWT"), http.StatusUnauthorized)
 		return
 	}
 	objects, err := s.Datastore.GetActorInbox(ctx, userID)
 	if err != nil {
-		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", actorID, err)
+		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
 		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 		return
 	}
@@ -331,13 +331,13 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	for _, object := range objects {
 		serializedObject, err := streams.Serialize(object)
 		if err != nil {
-			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", actorID, err)
+			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
 			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 			return
 		}
 		marshalledObject, err := json.Marshal(serializedObject)
 		if err != nil {
-			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", actorID, err)
+			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
 			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 			return
 		}
@@ -810,9 +810,10 @@ func (s *Server) readPrivateKey(actor string) (*rsa.PrivateKey, error) {
 	return privateKey, err
 }
 
-func createToken(username string, expirationTime time.Time) (string, error) {
+func createToken(username string, userID string, expirationTime time.Time) (string, error) {
 	claims := jwt.MapClaims{}
 	claims["username"] = username
+	claims["userID"] = userID
 	claims["exp"] = expirationTime.Unix()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	secret := viper.GetString("SECRET")
