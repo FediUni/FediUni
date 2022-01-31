@@ -740,7 +740,7 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 		return fmt.Errorf("follower ID is unspecified: got=%v", followerID)
 	}
 	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
-		return fmt.Errorf("failed to add Follower=%q to Actor=%q", followerID.String(), actorID.String())
+		return fmt.Errorf("failed to add Follower=%q to Actor=%q: got err=%v", followerID.String(), actorID.String(), err)
 	}
 	return nil
 }
