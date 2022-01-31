@@ -242,3 +242,32 @@ func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.
 	log.Infof("Inserted Activity: got=%v", res)
 	return nil
 }
+
+func (d *Datastore) GetActorInbox(ctx context.Context, userID string) ([]vocab.Type, error) {
+	inbox := d.client.Database("FediUni").Collection("inbox")
+	filter := bson.D{{"recipient", userID}}
+	opts := options.Find().SetSort(bson.D{{"published", 1}})
+	cursor, err := inbox.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	var objects []vocab.Type
+	noteResolver, err := streams.NewJSONResolver(func(ctx context.Context, note vocab.ActivityStreamsNote) error {
+		objects = append(objects, note)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new type resolver: got err=%v", err)
+	}
+	for cursor.Next(ctx) {
+		var m map[string]interface{}
+		if err := cursor.Decode(&m); err != nil {
+			return nil, err
+		}
+		if err := noteResolver.Resolve(ctx, m); err != nil {
+			return nil, err
+		}
+	}
+	return objects, nil
+}

@@ -83,6 +83,10 @@ func (d *TestDatastore) AddActivityToActorInbox(context.Context, vocab.Type, str
 	return fmt.Errorf("AddActivityToActorInbox() is unimplemented")
 }
 
+func (d *TestDatastore) GetActorInbox(context.Context, string) ([]vocab.Type, error) {
+	return nil, fmt.Errorf("GetActorInbox() is unimplemented")
+}
+
 type TestKeyGenerator struct{}
 
 func (g *TestKeyGenerator) GenerateKeyPair() (string, string, error) {
