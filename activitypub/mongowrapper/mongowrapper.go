@@ -203,9 +203,6 @@ func (d *Datastore) GetActivityByActivityID(ctx context.Context, activityID stri
 }
 
 func (d *Datastore) AddFollowerToActor(ctx context.Context, actorID, followerID string) error {
-	if actor, _ := d.GetActorByActorID(ctx, actorID); actor == nil {
-		return fmt.Errorf("actorID=%q does not exist on this instance", actorID)
-	}
 	log.Infof("Adding Follower=%q to Actor=%q", followerID, actorID)
 	users := d.client.Database("FediUni").Collection("followers")
 	opts := options.Update().SetUpsert(true)
