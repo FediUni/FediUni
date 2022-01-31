@@ -204,9 +204,9 @@ func (d *Datastore) GetActivityByActivityID(ctx context.Context, activityID stri
 
 func (d *Datastore) AddFollowerToActor(ctx context.Context, actorID, followerID string) error {
 	log.Infof("Adding Follower=%q to Actor=%q", followerID, actorID)
-	users := d.client.Database("FediUni").Collection("followers")
+	followers := d.client.Database("FediUni").Collection("followers")
 	opts := options.Update().SetUpsert(true)
-	res, err := users.UpdateOne(ctx, bson.D{{"_id", actorID}}, bson.D{{"$addToSet", bson.D{{"followers", followerID}}}}, opts)
+	res, err := followers.UpdateOne(ctx, bson.D{{"_id", actorID}}, bson.D{{"$addToSet", bson.D{{"followers", followerID}}}}, opts)
 	if err != nil {
 		return fmt.Errorf("failed to add follower to actor: got err=%v", err)
 	}
