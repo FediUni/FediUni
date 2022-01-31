@@ -242,7 +242,7 @@ func (d *Datastore) AddObjectsToActorInbox(ctx context.Context, objects []vocab.
 	return nil
 }
 
-func (d *Datastore) GetActorInbox(ctx context.Context, userID string) ([]vocab.Type, error) {
+func (d *Datastore) GetActorInbox(ctx context.Context, userID string) (vocab.ActivityStreamsOrderedCollection, error) {
 	inbox := d.client.Database("FediUni").Collection("inbox")
 	filter := bson.D{{"recipient", userID}}
 	opts := options.Find().SetSort(bson.D{{"published", 1}})
@@ -251,9 +251,10 @@ func (d *Datastore) GetActorInbox(ctx context.Context, userID string) ([]vocab.T
 		return nil, err
 	}
 	defer cursor.Close(ctx)
-	var objects []vocab.Type
+	orderedCollection := streams.NewActivityStreamsOrderedCollection()
+	orderedItems := streams.NewActivityStreamsOrderedItemsProperty()
 	noteResolver, err := streams.NewJSONResolver(func(ctx context.Context, note vocab.ActivityStreamsNote) error {
-		objects = append(objects, note)
+		orderedItems.AppendActivityStreamsNote(note)
 		return nil
 	})
 	if err != nil {
@@ -268,5 +269,6 @@ func (d *Datastore) GetActorInbox(ctx context.Context, userID string) ([]vocab.T
 			return nil, err
 		}
 	}
-	return objects, nil
+	orderedCollection.SetActivityStreamsOrderedItems(orderedItems)
+	return orderedCollection, nil
 }

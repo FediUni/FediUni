@@ -83,7 +83,7 @@ func (d *TestDatastore) AddObjectsToActorInbox(context.Context, []vocab.Type, st
 	return fmt.Errorf("AddObjectsToActorInbox() is unimplemented")
 }
 
-func (d *TestDatastore) GetActorInbox(context.Context, string) ([]vocab.Type, error) {
+func (d *TestDatastore) GetActorInbox(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error) {
 	return nil, fmt.Errorf("GetActorInbox() is unimplemented")
 }
 

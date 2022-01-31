@@ -1,7 +1,6 @@
 package activitypub
 
 import (
-	"bytes"
 	"context"
 	"crypto/rsa"
 	"encoding/json"
@@ -47,7 +46,7 @@ type Datastore interface {
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
 	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
-	GetActorInbox(context.Context, string) ([]vocab.Type, error)
+	GetActorInbox(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 }
 
 type Server struct {
@@ -321,31 +320,27 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to load userID from JWT"), http.StatusUnauthorized)
 		return
 	}
-	objects, err := s.Datastore.GetActorInbox(ctx, userID)
+	orderedCollection, err := s.Datastore.GetActorInbox(ctx, userID)
 	if err != nil {
 		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
 		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 		return
 	}
-	buf := &bytes.Buffer{}
-	for _, object := range objects {
-		serializedObject, err := streams.Serialize(object)
-		if err != nil {
-			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
-			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-			return
-		}
-		marshalledObject, err := json.Marshal(serializedObject)
-		if err != nil {
-			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
-			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-			return
-		}
-		buf.Write(marshalledObject)
+	serializedOrderedCollection, err := streams.Serialize(orderedCollection)
+	if err != nil {
+		log.Errorf("Failed to serialize Ordered Collection Inbox of Actor ID=%q: got err=%v", userID, err)
+		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+		return
+	}
+	marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
+	if err != nil {
+		log.Errorf("Failed to marshal Ordered Collection Inbox of Actor ID=%q: got err=%v", userID, err)
+		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(buf.Bytes())
+	w.Write(marshalledOrderedCollection)
 }
 
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
