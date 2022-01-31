@@ -726,7 +726,7 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 	default:
 		return fmt.Errorf("non person actor specified in Actor property")
 	}
-	if followerID != nil {
+	if followerID == nil {
 		return fmt.Errorf("follower ID is unspecified: got=%v", followerID)
 	}
 	var actorID *url.URL
@@ -736,8 +736,8 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 	default:
 		return fmt.Errorf("non person actor specified in Object property")
 	}
-	if actorID != nil {
-		return fmt.Errorf("follower ID is unspecified: got=%v", followerID)
+	if actorID == nil {
+		return fmt.Errorf("actor ID is unspecified: got=%v", followerID)
 	}
 	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
 		return fmt.Errorf("failed to add Follower=%q to Actor=%q", followerID.String(), actorID.String())
