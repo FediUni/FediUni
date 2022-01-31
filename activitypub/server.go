@@ -1,6 +1,7 @@
 package activitypub
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"encoding/json"
@@ -45,7 +46,8 @@ type Datastore interface {
 	AddFollowerToActor(context.Context, string, string) error
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
-	AddActivityToActorInbox(context.Context, vocab.Type, string) error
+	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
+	GetActorInbox(context.Context, string) ([]vocab.Type, error)
 }
 
 type Server struct {
@@ -102,11 +104,11 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	s.Router.Get("/", s.homepage)
 	s.Router.Get("/.well-known/webfinger", s.webfinger)
 	s.Router.Get("/actor/{username}", s.getActor)
-	s.Router.Get("/actor/{username}/inbox", s.getActorInbox)
-	s.Router.Get("/actor/{username}/followers", s.getFollowers)
-	s.Router.Get("/activity/{activityID}", s.getActivity)
+	s.Router.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
 	s.Router.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	s.Router.Get("/actor/{username}/outbox", s.getActorOutbox)
+	s.Router.Get("/actor/{username}/followers", s.getFollowers)
+	s.Router.Get("/activity/{activityID}", s.getActivity)
 	s.Router.Post("/register", s.createUser)
 	s.Router.Post("/login", s.login)
 	s.Router.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
@@ -298,13 +300,52 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	actorID := chi.URLParam(r, "username")
 	if actorID == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		return
+	}
+	rawUsername := claims["userID"]
+	var userID string
+	switch rawUsername.(type) {
+	case string:
+		userID = rawUsername.(string)
+	default:
+		log.Errorf("Invalid actor ID presented: got %v", rawUsername)
+		http.Error(w, fmt.Sprintf("failed to load username"), http.StatusUnauthorized)
+		return
+	}
+	objects, err := s.Datastore.GetActorInbox(ctx, userID)
+	if err != nil {
+		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", actorID, err)
+		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+		return
+	}
+	buf := &bytes.Buffer{}
+	for _, object := range objects {
+		serializedObject, err := streams.Serialize(object)
+		if err != nil {
+			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", actorID, err)
+			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+			return
+		}
+		marshalledObject, err := json.Marshal(serializedObject)
+		if err != nil {
+			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", actorID, err)
+			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+			return
+		}
+		buf.Write(marshalledObject)
+	}
 	w.Header().Add("Content-Type", "application/activity+json")
-	http.Error(w, "actor inbox lookup is unimplemented", http.StatusNotImplemented)
+	w.WriteHeader(http.StatusOK)
+	w.Write(buf.Bytes())
 }
 
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
@@ -534,6 +575,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if creatorID.String() == "" {
 		return fmt.Errorf("actor ID is unspecified: got=%q", creatorID.String())
 	}
+	var objects []vocab.Type
 	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		switch {
 		case iter.IsActivityStreamsNote():
@@ -542,11 +584,12 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 			for c := content.Begin(); c != nil; c = c.Next() {
 				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
 			}
+			objects = append(objects, note)
 		default:
 			return fmt.Errorf("non-note activity presented")
 		}
 	}
-	return s.Datastore.AddActivityToActorInbox(ctx, create, receiverID)
+	return s.Datastore.AddObjectsToActorInbox(ctx, objects, receiverID)
 }
 
 // handleFollowRequest allows the actor to follow the requested person on this instance.
