@@ -193,7 +193,7 @@ func TestWebfingerKnownAccount(t *testing.T) {
 			s, _ := NewServer("https://testfediuni.xyz", "", NewTestDatastore("https://testfediuni.xyz"), nil, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
-			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
+			webfingerURL := fmt.Sprintf("%s/.well-known/Webfinger", server.URL)
 			resp, err := http.Get(fmt.Sprintf("%s?resource=%s", webfingerURL, test.resource))
 			if err != nil {
 				t.Errorf("%s: returned an unexpected err: got=%v want=%v", webfingerURL, err, nil)
@@ -241,7 +241,7 @@ func TestWebfinger(t *testing.T) {
 			s, _ := NewServer("https://testfediuni.xyz", "", NewTestDatastore("https://testserver.com"), nil, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
-			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
+			webfingerURL := fmt.Sprintf("%s/.well-known/Webfinger", server.URL)
 			resp, err := http.Get(fmt.Sprintf("%s?resource=%s", webfingerURL, test.resource))
 			if err != nil {
 				t.Errorf("%s: returned an unexpected err: got=%v want=%v", webfingerURL, err, nil)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 
 	"github.com/FediUni/FediUni/activitypub"
@@ -61,7 +62,10 @@ func main() {
 		log.Fatalf("failed to create service: got err=%v", err)
 	}
 	log.Infof("FediUni Instance: Listening on port %d", *port)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), s.Router); err != nil {
+	r := chi.NewRouter()
+	r.Get("/.well-known/webfinger", s.Webfinger)
+	r.Mount("/api", s.Router)
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), r); err != nil {
 		log.Fatalln(err)
 	}
 }
