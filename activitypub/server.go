@@ -51,13 +51,13 @@ type Datastore interface {
 
 type Server struct {
 	URL          *url.URL
-	Keys         string
 	Router       *chi.Mux
 	Datastore    Datastore
 	Redis        *redis.Client
 	KeyGenerator actor.KeyGenerator
 	Client       *client.Client
 	Policy       *bluemonday.Policy
+	Secret       string
 }
 
 type WebfingerResponse struct {
@@ -75,7 +75,7 @@ var (
 	tokenAuth *jwtauth.JWTAuth
 )
 
-func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
+func NewServer(instanceURL string, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
 	url, err := url.Parse(instanceURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse instanceURL=%q: got err=%v", instanceURL, err)
@@ -83,7 +83,6 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 	tokenAuth = jwtauth.New("HS256", []byte(secret), nil)
 	s := &Server{
 		URL:          url,
-		Keys:         keys,
 		Datastore:    datastore,
 		KeyGenerator: keyGenerator,
 		Client:       client.NewClient(url),
@@ -92,6 +91,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 			Password: viper.GetString("REDIS_PASSWORD"),
 		}),
 		Policy: bluemonday.UGCPolicy(),
+		Secret: secret,
 	}
 
 	s.Router = chi.NewRouter()
@@ -285,19 +285,22 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expirationTime := time.Now().Add(72 * time.Hour)
-	token, err := createToken(username, fmt.Sprintf("%s/actor/%s", s.URL.String(), username), expirationTime)
+	token, err := s.createToken(username, fmt.Sprintf("%s/actor/%s", s.URL.String(), username), expirationTime)
 	if err != nil {
 		log.Errorf("failed to generate JWT: got err=%v", err)
 		http.Error(w, fmt.Sprint("failed to generate JWT"), http.StatusInternalServerError)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     "jwt",
-		Value:    token,
-		Expires:  expirationTime,
-		HttpOnly: true,
-	})
+	m := map[string]interface{}{}
+	m["jwt"] = token
+	marshalledToken, err := json.Marshal(m)
+	if err != nil {
+		log.Errorf("failed to marshal JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to write JWT"), http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusAccepted)
+	w.Write(marshalledToken)
 }
 
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
@@ -807,15 +810,14 @@ func (s *Server) readPrivateKey(actor string) (*rsa.PrivateKey, error) {
 	return privateKey, err
 }
 
-func createToken(username string, userID string, expirationTime time.Time) (string, error) {
+func (s *Server) createToken(username string, userID string, expirationTime time.Time) (string, error) {
 	claims := jwt.MapClaims{}
 	claims["username"] = username
 	claims["userID"] = userID
 	claims["exp"] = expirationTime.Unix()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	secret := viper.GetString("SECRET")
-	if secret == "" {
+	if s.Secret == "" {
 		return "", fmt.Errorf("failed to provide a secret for JWT signing")
 	}
-	return token.SignedString([]byte(secret))
+	return token.SignedString([]byte(s.Secret))
 }
