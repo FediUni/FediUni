@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/go-chi/jwtauth"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +18,8 @@ import (
 )
 
 type TestDatastore struct {
-	knownUsers  map[string]actor.Person
+	knownUsers  map[string]*user.User
+	knownActors map[string]actor.Person
 	privateKeys map[string]string
 }
 
@@ -27,7 +29,8 @@ func NewTestDatastore(rawURL string) *TestDatastore {
 	personGenerator := actor.NewPersonGenerator(parsedURL, keyGenerator)
 	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
 	return &TestDatastore{
-		knownUsers: map[string]actor.Person{
+		knownUsers: map[string]*user.User{},
+		knownActors: map[string]actor.Person{
 			"brandonstark": person,
 		},
 		privateKeys: map[string]string{
@@ -37,7 +40,7 @@ func NewTestDatastore(rawURL string) *TestDatastore {
 }
 
 func (d *TestDatastore) GetActorByUsername(_ context.Context, username string) (actor.Person, error) {
-	if a := d.knownUsers[username]; a != nil {
+	if a := d.knownActors[username]; a != nil {
 		return a, nil
 	}
 	return nil, fmt.Errorf("unable to find actor with username=%q", username)
@@ -47,8 +50,9 @@ func (d *TestDatastore) GetActorByActorID(_ context.Context, _ string) (actor.Pe
 	return nil, fmt.Errorf("GetActorByActorID() is unimplemented")
 }
 
-func (d *TestDatastore) CreateUser(_ context.Context, _ *user.User) error {
-	return fmt.Errorf("CreateUser() is Unimplemented")
+func (d *TestDatastore) CreateUser(_ context.Context, user *user.User) error {
+	d.knownUsers[user.Username] = user
+	return nil
 }
 
 func (d *TestDatastore) AddActivityToSharedInbox(_ context.Context, _ vocab.Type, _ string) error {
@@ -71,8 +75,8 @@ func (d *TestDatastore) RemoveFollowerFromActor(ctx context.Context, actorID, fo
 	return fmt.Errorf("RemoveFollowerFromActor() is unimplemented")
 }
 
-func (d *TestDatastore) GetUserByUsername(ctx context.Context, username string) (*user.User, error) {
-	return nil, fmt.Errorf("GetUserByUsername() is unimplemented")
+func (d *TestDatastore) GetUserByUsername(_ context.Context, username string) (*user.User, error) {
+	return d.knownUsers[username], nil
 }
 
 func (d *TestDatastore) GetFollowersByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error) {
@@ -102,7 +106,7 @@ func (g *TestKeyGenerator) GetPrivateKeyPEM() ([]byte, error) {
 }
 
 func TestGetActor(t *testing.T) {
-	s, _ := NewServer("https://testserver.com", "", NewTestDatastore("https://testserver.com"), nil, "")
+	s, _ := NewServer("https://testserver.com", NewTestDatastore("https://testserver.com"), nil, "")
 	server := httptest.NewServer(s.Router)
 	defer server.Close()
 	resp, err := http.Get(fmt.Sprintf("%s/actor/bendean", server.URL))
@@ -150,7 +154,7 @@ func TestCreateUser(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := NewServer("https://testserver.com", "", nil, &TestKeyGenerator{}, "")
+			s, _ := NewServer("https://testserver.com", nil, &TestKeyGenerator{}, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			registrationURL := fmt.Sprintf("%s/api/register", server.URL)
@@ -190,7 +194,7 @@ func TestWebfingerKnownAccount(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := NewServer("https://testfediuni.xyz", "", NewTestDatastore("https://testfediuni.xyz"), nil, "")
+			s, _ := NewServer("https://testfediuni.xyz", NewTestDatastore("https://testfediuni.xyz"), nil, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -238,18 +242,83 @@ func TestWebfinger(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := NewServer("https://testfediuni.xyz", "", NewTestDatastore("https://testserver.com"), nil, "")
+			s, _ := NewServer("https://testfediuni.xyz", NewTestDatastore("https://testserver.com"), nil, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
-			resp, err := http.Get(fmt.Sprintf("%s?resource=%s", webfingerURL, test.resource))
+			res, err := http.Get(fmt.Sprintf("%s?resource=%s", webfingerURL, test.resource))
 			if err != nil {
 				t.Errorf("%s: returned an unexpected err: got=%v want=%v", webfingerURL, err, nil)
 			}
-			defer resp.Body.Close()
-			gotStatus := resp.StatusCode
+			defer res.Body.Close()
+			gotStatus := res.StatusCode
 			if gotStatus != test.wantErrorCode {
 				t.Errorf("%s: returned an unexpected status: got %v want %v", webfingerURL, gotStatus, test.wantErrorCode)
+			}
+		})
+	}
+}
+
+func TestLogin(t *testing.T) {
+	tests := []struct {
+		name     string
+		username string
+		password string
+		params   url.Values
+	}{
+		{
+			name:     "Test valid username and password",
+			username: "testuser",
+			password: "testpassword",
+			params: url.Values{
+				"username": []string{"testuser"},
+				"password": []string{"testpassword"},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			datastore := NewTestDatastore("https://testserver.com")
+			secret := "thisisatestsecret"
+			s, _ := NewServer("https://testfediuni.xyz", datastore, nil, secret)
+			server := httptest.NewServer(s.Router)
+			defer server.Close()
+			u := &user.User{
+				Username: test.username,
+			}
+			hashedPassword, err := user.HashPassword(test.password)
+			if err != nil {
+				t.Fatalf("failed to hash password: got err=%v", err)
+			}
+			u.Password = string(hashedPassword)
+			if err := datastore.CreateUser(context.Background(), u); err != nil {
+				t.Fatalf("failed to create user in datastore: got err=%v", err)
+			}
+			loginURL := fmt.Sprintf("%s/api/login", server.URL)
+			res, err := http.PostForm(loginURL, test.params)
+			if err != nil {
+				t.Fatalf("failed to POST login form: got err=%v", err)
+			}
+			defer res.Body.Close()
+			body, err := ioutil.ReadAll(res.Body)
+			if err != nil {
+				t.Errorf("failed to read from response body: got err=%v", err)
+			}
+			var m map[string]interface{}
+			if err := json.Unmarshal(body, &m); err != nil {
+				t.Errorf("failed to unmarshal JSON from response body: got err=%v", err)
+			}
+			var token string
+			switch m["jwt"].(type) {
+			case string:
+				token = m["jwt"].(string)
+			default:
+				t.Errorf("failed to receive token string in JSON: got %v", token)
+			}
+			tokenAuth = jwtauth.New("HS256", []byte(secret), nil)
+			_, err = jwtauth.VerifyToken(tokenAuth, token)
+			if err != nil {
+				t.Errorf("failed to verify JWT token: got err=%v", err)
 			}
 		})
 	}

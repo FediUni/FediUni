@@ -17,7 +17,6 @@ import (
 
 var (
 	config = flag.String("config", "/run/secrets/", "The directory with YAML config containing MongoDB URI. This is in addition to the working directory.")
-	keys   = flag.String("key_directory", "/keys", "The directory in which to store user private keys.")
 	port   = flag.Int("port", 8080, "The port for the FediUni instance to listen on.")
 )
 
@@ -56,7 +55,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	s, err := activitypub.NewServer(instanceURL, *keys, datastore, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"))
+	s, err := activitypub.NewServer(instanceURL, datastore, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"))
 	if err != nil {
 		log.Fatalf("failed to create service: got err=%v", err)
 	}
