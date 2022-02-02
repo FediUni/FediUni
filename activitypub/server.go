@@ -93,24 +93,26 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 		}),
 		Policy: bluemonday.UGCPolicy(),
 	}
-	s.Router = chi.NewRouter()
 
+	s.Router = chi.NewRouter()
 	s.Router.Use(middleware.RealIP)
 	s.Router.Use(middleware.Logger)
 	s.Router.Use(middleware.Timeout(60 * time.Second))
 	s.Router.Use(httprate.LimitAll(100, time.Minute*1))
 
-	s.Router.Get("/", s.homepage)
-	s.Router.Get("/.well-known/webfinger", s.webfinger)
-	s.Router.Get("/actor/{username}", s.getActor)
-	s.Router.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
-	s.Router.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
-	s.Router.Get("/actor/{username}/outbox", s.getActorOutbox)
-	s.Router.Get("/actor/{username}/followers", s.getFollowers)
-	s.Router.Get("/activity/{activityID}", s.getActivity)
-	s.Router.Post("/register", s.createUser)
-	s.Router.Post("/login", s.login)
-	s.Router.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
+	activitypubRouter := chi.NewRouter()
+	activitypubRouter.Get("/actor/{username}", s.getActor)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
+	activitypubRouter.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
+	activitypubRouter.Get("/actor/{username}/outbox", s.getActorOutbox)
+	activitypubRouter.Get("/actor/{username}/followers", s.getFollowers)
+	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
+	activitypubRouter.Post("/register", s.createUser)
+	activitypubRouter.Post("/login", s.login)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
+
+	s.Router.Get("/.well-known/webfinger", s.Webfinger)
+	s.Router.Mount("/api", activitypubRouter)
 	return s, nil
 }
 
@@ -462,20 +464,20 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.Client.WebfingerLookup(ctx, domain, usernameToFollow)
 	if err != nil {
-		log.Errorf("failed to perform webfinger lookup: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to perform webfinger lookup"), http.StatusInternalServerError)
+		log.Errorf("failed to perform Webfinger lookup: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to perform Webfinger lookup"), http.StatusInternalServerError)
 		return
 	}
 	log.Infof("Received %q", res)
 	var webfingerResponse WebfingerResponse
 	if err := json.Unmarshal(res, &webfingerResponse); err != nil {
-		log.Errorf("failed to perform webfinger lookup: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to perform webfinger lookup"), http.StatusInternalServerError)
+		log.Errorf("failed to perform Webfinger lookup: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to perform Webfinger lookup"), http.StatusInternalServerError)
 		return
 	}
 	if len(webfingerResponse.Links) == 0 {
-		log.Errorf("failed to perform webfinger lookup: got number_of_links=%d", len(webfingerResponse.Links))
-		http.Error(w, fmt.Sprintf("failed to perform webfinger lookup"), http.StatusInternalServerError)
+		log.Errorf("failed to perform Webfinger lookup: got number_of_links=%d", len(webfingerResponse.Links))
+		http.Error(w, fmt.Sprintf("failed to perform Webfinger lookup"), http.StatusInternalServerError)
 		return
 	}
 	var actorID *url.URL
@@ -749,8 +751,8 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "actor outbox lookup is unimplemented", http.StatusNotImplemented)
 }
 
-// webfinger allow other services to query if a user on this instance.
-func (s *Server) webfinger(w http.ResponseWriter, r *http.Request) {
+// Webfinger allow other services to query if a user on this instance.
+func (s *Server) Webfinger(w http.ResponseWriter, r *http.Request) {
 	resource := r.URL.Query().Get("resource")
 	var username string
 	// Find alternative to this parsing (other than Regex)

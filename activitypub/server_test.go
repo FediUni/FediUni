@@ -153,7 +153,7 @@ func TestCreateUser(t *testing.T) {
 			s, _ := NewServer("https://testserver.com", "", nil, &TestKeyGenerator{}, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
-			registrationURL := fmt.Sprintf("%s/register", server.URL)
+			registrationURL := fmt.Sprintf("%s/api/register", server.URL)
 			resp, err := http.PostForm(registrationURL, test.params)
 			if err != nil {
 				t.Errorf("%s: returned an unexpected err: got=%v want=%v", registrationURL, err, nil)
