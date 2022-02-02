@@ -93,22 +93,25 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 		}),
 		Policy: bluemonday.UGCPolicy(),
 	}
-	s.Router = chi.NewRouter()
 
 	s.Router.Use(middleware.RealIP)
 	s.Router.Use(middleware.Logger)
 	s.Router.Use(middleware.Timeout(60 * time.Second))
 	s.Router.Use(httprate.LimitAll(100, time.Minute*1))
 
-	s.Router.Get("/actor/{username}", s.getActor)
-	s.Router.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
-	s.Router.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
-	s.Router.Get("/actor/{username}/outbox", s.getActorOutbox)
-	s.Router.Get("/actor/{username}/followers", s.getFollowers)
-	s.Router.Get("/activity/{activityID}", s.getActivity)
-	s.Router.Post("/register", s.createUser)
-	s.Router.Post("/login", s.login)
-	s.Router.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
+	activitypubRouter := chi.NewRouter()
+	activitypubRouter.Get("/actor/{username}", s.getActor)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
+	activitypubRouter.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
+	activitypubRouter.Get("/actor/{username}/outbox", s.getActorOutbox)
+	activitypubRouter.Get("/actor/{username}/followers", s.getFollowers)
+	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
+	activitypubRouter.Post("/register", s.createUser)
+	activitypubRouter.Post("/login", s.login)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
+
+	s.Router.Get("/.well-known/webfinger", s.Webfinger)
+	s.Router.Mount("/api", activitypubRouter)
 	return s, nil
 }
 
