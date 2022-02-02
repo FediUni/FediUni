@@ -94,6 +94,7 @@ func NewServer(instanceURL, keys string, datastore Datastore, keyGenerator actor
 		Policy: bluemonday.UGCPolicy(),
 	}
 
+	s.Router = chi.NewRouter()
 	s.Router.Use(middleware.RealIP)
 	s.Router.Use(middleware.Logger)
 	s.Router.Use(middleware.Timeout(60 * time.Second))
