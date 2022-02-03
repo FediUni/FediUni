@@ -1,15 +1,18 @@
 package activitypub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-chi/jwtauth"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+
+	"github.com/go-chi/jwtauth"
 
 	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/user"
@@ -270,10 +273,6 @@ func TestLogin(t *testing.T) {
 			name:     "Test valid username and password",
 			username: "testuser",
 			password: "testpassword",
-			params: url.Values{
-				"username": []string{"testuser"},
-				"password": []string{"testpassword"},
-			},
 		},
 	}
 	for _, test := range tests {
@@ -295,7 +294,17 @@ func TestLogin(t *testing.T) {
 				t.Fatalf("failed to create user in datastore: got err=%v", err)
 			}
 			loginURL := fmt.Sprintf("%s/api/login", server.URL)
-			res, err := http.PostForm(loginURL, test.params)
+			buf := &bytes.Buffer{}
+			writer := multipart.NewWriter(buf)
+			writer.WriteField("username", test.username)
+			writer.WriteField("password", test.password)
+			writer.Close()
+			req, err := http.NewRequest(http.MethodPost, loginURL, buf)
+			if err != nil {
+				t.Fatalf("failed to create login form: got err=%v", err)
+			}
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			res, err := http.DefaultClient.Do(req)
 			if err != nil {
 				t.Fatalf("failed to POST login form: got err=%v", err)
 			}
