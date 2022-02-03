@@ -166,6 +166,7 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load actor", http.StatusInternalServerError)
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Write(m)
 }
@@ -194,6 +195,8 @@ func (s *Server) getFollowers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load followers", http.StatusInternalServerError)
 		return
 	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write(marshalledActivity)
 }
 
@@ -221,6 +224,7 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledActivity)
 }
@@ -262,6 +266,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(200)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write([]byte("Successfully created user and person."))
 }
 
@@ -309,6 +314,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to write JWT"), http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusAccepted)
 	w.Write(marshalledToken)
 }
@@ -354,6 +360,7 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledOrderedCollection)
 }
@@ -802,6 +809,7 @@ func (s *Server) Webfinger(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load actor", http.StatusInternalServerError)
 	}
 	w.WriteHeader(200)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write(response)
 }
 
