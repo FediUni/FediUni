@@ -308,6 +308,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	m := map[string]interface{}{}
 	m["jwt"] = token
+	m["expires"] = expirationTime
 	marshalledToken, err := json.Marshal(m)
 	if err != nil {
 		log.Errorf("failed to marshal JWT: got err=%v", err)
