@@ -102,11 +102,11 @@ func NewServer(instanceURL string, datastore Datastore, keyGenerator actor.KeyGe
 	s.Router.Use(middleware.Timeout(60 * time.Second))
 	s.Router.Use(httprate.LimitAll(100, time.Minute*1))
 	s.Router.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: false,
+		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 
