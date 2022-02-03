@@ -5,7 +5,6 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	"github.com/microcosm-cc/bluemonday"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -13,12 +12,15 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/microcosm-cc/bluemonday"
+
 	"github.com/FediUni/FediUni/activitypub/activity"
 	"github.com/FediUni/FediUni/activitypub/client"
 	"github.com/FediUni/FediUni/activitypub/follower"
 	"github.com/FediUni/FediUni/activitypub/undo"
 	"github.com/FediUni/FediUni/activitypub/validation"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/go-chi/cors"
 	"github.com/go-chi/jwtauth"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
@@ -99,6 +101,14 @@ func NewServer(instanceURL string, datastore Datastore, keyGenerator actor.KeyGe
 	s.Router.Use(middleware.Logger)
 	s.Router.Use(middleware.Timeout(60 * time.Second))
 	s.Router.Use(httprate.LimitAll(100, time.Minute*1))
+	s.Router.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
 
 	activitypubRouter := chi.NewRouter()
 	activitypubRouter.Get("/actor/{username}", s.getActor)
