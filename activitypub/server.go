@@ -233,44 +233,58 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	// Set MaxMemory to 8MB.
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		log.Errorf("failed to parse Login Form: got err=%v", err)
-		http.Error(w, fmt.Sprint("failed to parse login form"), http.StatusBadRequest)
+		http.Error(w, fmt.Sprint("failed to create user"), http.StatusBadRequest)
 		return
 	}
 	username := r.FormValue("username")
+	if username == "" {
+		log.Errorf("failed to create user: username is unspecified")
+		http.Error(w, "username is unspecified", http.StatusBadRequest)
+	}
 	displayName := r.FormValue("name")
 	password := r.FormValue("password")
+	if password == "" {
+		log.Errorf("failed to create user: password is unspecified")
+		http.Error(w, "password is unspecified", http.StatusBadRequest)
+	}
 	generator := actor.NewPersonGenerator(s.URL, s.KeyGenerator)
 	person, err := generator.NewPerson(username, displayName)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusBadRequest)
 		log.Errorf("Failed to create person, got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusInternalServerError)
 		return
 	}
 	newUser, err := user.NewUser(username, password, person)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusBadRequest)
 		log.Errorf("Failed to create user, got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusInternalServerError)
 		return
 	}
 	privateKeyPEM, err := s.KeyGenerator.GetPrivateKeyPEM()
 	if err != nil {
 		log.Errorf("Failed to get private key: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusInternalServerError)
 		return
 	}
 	if err := s.Datastore.CreateUser(r.Context(), newUser); err != nil {
-		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusBadRequest)
 		log.Errorf("Failed to create user in datastore, got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusInternalServerError)
 		return
 	}
 	if err := s.Redis.Set(strings.ToLower(username), privateKeyPEM, time.Duration(0)).Err(); err != nil {
 		log.Errorf("Failed to write private key: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to create person"), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusInternalServerError)
 		return
 	}
+	res, err := s.generateTokenResponse(username)
+	if err != nil {
+		log.Errorf("Failed to create token response: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(200)
-
-	w.Write([]byte("Successfully created user and person."))
+	w.Write(res)
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
@@ -303,25 +317,15 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprint("invalid password"), http.StatusInternalServerError)
 		return
 	}
-	expirationTime := time.Now().Add(72 * time.Hour)
-	token, err := s.createToken(username, fmt.Sprintf("%s/actor/%s", s.URL.String(), username), expirationTime)
+	res, err := s.generateTokenResponse(username)
 	if err != nil {
-		log.Errorf("failed to generate JWT: got err=%v", err)
-		http.Error(w, fmt.Sprint("failed to generate JWT"), http.StatusInternalServerError)
+		log.Errorf("failed to generate token response: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to authenticate user: got err=%v", err), http.StatusInternalServerError)
 		return
 	}
-	m := map[string]interface{}{}
-	m["jwt"] = token
-	m["expires"] = expirationTime.UTC().Format(http.TimeFormat)
-	marshalledToken, err := json.Marshal(m)
-	if err != nil {
-		log.Errorf("failed to marshal JWT: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to write JWT"), http.StatusInternalServerError)
-		return
-	}
-
+	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	w.Write(marshalledToken)
+	w.Write(res)
 }
 
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
@@ -843,4 +847,20 @@ func (s *Server) createToken(username string, userID string, expirationTime time
 		return "", fmt.Errorf("failed to provide a secret for JWT signing")
 	}
 	return token.SignedString([]byte(s.Secret))
+}
+
+func (s *Server) generateTokenResponse(username string) ([]byte, error) {
+	expirationTime := time.Now().Add(72 * time.Hour)
+	token, err := s.createToken(username, fmt.Sprintf("%s/actor/%s", s.URL.String(), username), expirationTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate JWT: got err=%v", err)
+	}
+	m := map[string]interface{}{}
+	m["jwt"] = token
+	m["expires"] = expirationTime.UTC().Format(http.TimeFormat)
+	marshalledToken, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JWT: got err=%v", err)
+	}
+	return marshalledToken, nil
 }
