@@ -230,14 +230,14 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
-// Set MaxMemory to 8MB.
+	// Set MaxMemory to 8MB.
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		log.Errorf("failed to parse Login Form: got err=%v", err)
 		http.Error(w, fmt.Sprint("failed to parse login form"), http.StatusBadRequest)
 		return
 	}
 	username := r.FormValue("username")
-	displayName := r.FormValue("displayName")
+	displayName := r.FormValue("name")
 	password := r.FormValue("password")
 	generator := actor.NewPersonGenerator(s.URL, s.KeyGenerator)
 	person, err := generator.NewPerson(username, displayName)
