@@ -242,6 +242,21 @@ func (d *Datastore) AddObjectsToActorInbox(ctx context.Context, objects []vocab.
 	return nil
 }
 
+func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.Type, userID string) error {
+	inbox := d.client.Database("FediUni").Collection("inbox")
+	m, err := streams.Serialize(activity)
+	if err != nil {
+		return err
+	}
+	m["recipient"] = userID
+	res, err := inbox.InsertOne(ctx, m)
+	if err != nil {
+		return err
+	}
+	log.Infof("Inserted Activity: got=%v", res)
+	return nil
+}
+
 func (d *Datastore) GetActorInbox(ctx context.Context, userID string) (vocab.ActivityStreamsOrderedCollection, error) {
 	inbox := d.client.Database("FediUni").Collection("inbox")
 	filter := bson.D{{"recipient", userID}}
@@ -253,8 +268,8 @@ func (d *Datastore) GetActorInbox(ctx context.Context, userID string) (vocab.Act
 	defer cursor.Close(ctx)
 	orderedCollection := streams.NewActivityStreamsOrderedCollection()
 	orderedItems := streams.NewActivityStreamsOrderedItemsProperty()
-	noteResolver, err := streams.NewJSONResolver(func(ctx context.Context, note vocab.ActivityStreamsNote) error {
-		orderedItems.AppendActivityStreamsNote(note)
+	activityResolver, err := streams.NewJSONResolver(func(ctx context.Context, c vocab.ActivityStreamsCreate) error {
+		orderedItems.AppendActivityStreamsCreate(c)
 		return nil
 	})
 	if err != nil {
@@ -265,7 +280,7 @@ func (d *Datastore) GetActorInbox(ctx context.Context, userID string) (vocab.Act
 		if err := cursor.Decode(&m); err != nil {
 			return nil, err
 		}
-		if err := noteResolver.Resolve(ctx, m); err != nil {
+		if err := activityResolver.Resolve(ctx, m); err != nil {
 			return nil, err
 		}
 	}
