@@ -12,28 +12,26 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/microcosm-cc/bluemonday"
-
 	"github.com/FediUni/FediUni/activitypub/activity"
+	"github.com/FediUni/FediUni/activitypub/actor"
 	"github.com/FediUni/FediUni/activitypub/client"
 	"github.com/FediUni/FediUni/activitypub/follower"
 	"github.com/FediUni/FediUni/activitypub/undo"
+	"github.com/FediUni/FediUni/activitypub/user"
 	"github.com/FediUni/FediUni/activitypub/validation"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/go-chi/httprate"
 	"github.com/go-chi/jwtauth"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/go-redis/redis"
+	log "github.com/golang/glog"
+	"github.com/microcosm-cc/bluemonday"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/bcrypt"
-
-	"github.com/FediUni/FediUni/activitypub/actor"
-	"github.com/FediUni/FediUni/activitypub/user"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/httprate"
-	log "github.com/golang/glog"
 )
 
 type Datastore interface {
@@ -44,6 +42,7 @@ type Datastore interface {
 	CreateUser(context.Context, *user.User) error
 	GetUserByUsername(context.Context, string) (*user.User, error)
 	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
+	AddActivityToActorInbox(context.Context, vocab.Type, string) error
 	AddFollowerToActor(context.Context, string, string) error
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
@@ -601,7 +600,6 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if creatorID.String() == "" {
 		return fmt.Errorf("actor ID is unspecified: got=%q", creatorID.String())
 	}
-	var objects []vocab.Type
 	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		switch {
 		case iter.IsActivityStreamsNote():
@@ -610,12 +608,11 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 			for c := content.Begin(); c != nil; c = c.Next() {
 				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
 			}
-			objects = append(objects, note)
 		default:
 			return fmt.Errorf("non-note activity presented")
 		}
 	}
-	return s.Datastore.AddObjectsToActorInbox(ctx, objects, receiverID)
+	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, receiverID)
 }
 
 // handleFollowRequest allows the actor to follow the requested person on this instance.

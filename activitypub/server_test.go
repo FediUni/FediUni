@@ -62,6 +62,10 @@ func (d *TestDatastore) AddActivityToSharedInbox(_ context.Context, _ vocab.Type
 	return fmt.Errorf("AddActivityToSharedInbox() is unimplemented")
 }
 
+func (d *TestDatastore) AddActivityToActorInbox(context.Context, vocab.Type, string) error {
+	return fmt.Errorf("AddActivityToActorInbox() is unimplemented")
+}
+
 func (d *TestDatastore) GetActivityByObjectID(_ context.Context, _ string, _ string) (vocab.Type, error) {
 	return nil, fmt.Errorf("GetActivityByObjectID() is unimplemented")
 }
