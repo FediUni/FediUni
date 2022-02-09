@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	bcryptCost = 16
+	bcryptCost = 10
 )
 
 // User is used for authentication purposes.
