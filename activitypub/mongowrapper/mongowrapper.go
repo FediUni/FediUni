@@ -260,7 +260,8 @@ func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.
 func (d *Datastore) GetActorInbox(ctx context.Context, userID string) (vocab.ActivityStreamsOrderedCollection, error) {
 	inbox := d.client.Database("FediUni").Collection("inbox")
 	filter := bson.D{{"recipient", userID}}
-	opts := options.Find().SetSort(bson.D{{"published", 1}})
+	log.Infof("Searching for Recipient with ActorID=%q", userID)
+	opts := options.Find().SetSort(bson.D{{"published", 0}})
 	cursor, err := inbox.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
