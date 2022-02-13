@@ -75,7 +75,7 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 	var marshalledObject []byte
 	var err error
 	if !forceUpdate {
-		log.Infoln("Reading ObjectID=%q from cache...", iri.String())
+		log.Infof("Reading ObjectID=%q from cache...", iri.String())
 		marshalledObject, err = c.Cache.Load(iri.String())
 		if err != nil {
 			log.Errorf("Redis failed to load ObjectID=%q from cache: got err=%v", iri.String(), err)
@@ -103,7 +103,7 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 	}
 	var m map[string]interface{}
 	if err := json.Unmarshal(marshalledObject, &m); err != nil {
-		log.Infoln("Storing ObjectID=%q in cache...", iri.String())
+		log.Infof("Storing ObjectID=%q in cache...", iri.String())
 		return nil, err
 	}
 	return streams.ToType(ctx, m)
