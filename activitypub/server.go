@@ -86,7 +86,7 @@ func NewServer(instanceURL string, datastore Datastore, keyGenerator actor.KeyGe
 		URL:          url,
 		Datastore:    datastore,
 		KeyGenerator: keyGenerator,
-		Client:       client.NewClient(url),
+		Client:       client.NewClient(url, "redis:6379", viper.GetString("REDIS_PASSWORD")),
 		Redis: redis.NewClient(&redis.Options{
 			Addr:     "redis:6379",
 			Password: viper.GetString("REDIS_PASSWORD"),
@@ -110,6 +110,7 @@ func NewServer(instanceURL string, datastore Datastore, keyGenerator actor.KeyGe
 	}))
 
 	activitypubRouter := chi.NewRouter()
+	activitypubRouter.Get("/actor", s.getAnyActor)
 	activitypubRouter.Get("/actor/{username}", s.getActor)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
 	activitypubRouter.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
@@ -165,9 +166,81 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load actor", http.StatusInternalServerError)
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
-
 	w.WriteHeader(http.StatusOK)
 	w.Write(m)
+}
+
+func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
+	identifier := r.URL.Query().Get("identifier")
+	if identifier == "" {
+		log.Errorf("failed to receive identifier: got=%q", identifier)
+		http.Error(w, "failed to receive an identifier", http.StatusBadRequest)
+		return
+	}
+	splitIdentifier := strings.Split(identifier, "@")
+	if len(splitIdentifier) != 3 {
+		log.Errorf("bad identifier receivied: want=%d, got=%v", 2, len(splitIdentifier), splitIdentifier)
+		http.Error(w, "failed to receive an identifier", http.StatusBadRequest)
+		return
+	}
+	username := splitIdentifier[1]
+	domain := splitIdentifier[2]
+	var actor vocab.Type
+	var err error
+	if domain == s.URL.Host {
+		actor, err = s.Datastore.GetActorByUsername(r.Context(), username)
+		if err != nil {
+			log.Errorf("failed to load actorID: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", identifier), http.StatusBadRequest)
+			return
+		}
+	} else {
+		res, err := s.Client.WebfingerLookup(r.Context(), domain, username)
+		if err != nil {
+			log.Errorf("failed to lookup actor=%q, got err=%v", identifier, err)
+			http.Error(w, "failed to lookup actor", http.StatusBadRequest)
+			return
+		}
+		var webfingerResponse *WebfingerResponse
+		log.Infoln(string(res))
+		if err := json.Unmarshal(res, &webfingerResponse); err != nil {
+			log.Errorf("failed to unmarshal webfinger response: got err=%v", err)
+			http.Error(w, "failed to lookup actor", http.StatusBadRequest)
+			return
+		}
+		var actorID *url.URL
+		for _, link := range webfingerResponse.Links {
+			if !strings.Contains(link.Type, "application/activity+json") && !strings.Contains(link.Type, "application/ld+json") {
+				continue
+			}
+			if actorID, err = url.Parse(link.Href); err != nil {
+				log.Errorf("failed to load actorID: got err=%v", err)
+				http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorID), http.StatusBadRequest)
+				return
+			}
+			break
+		}
+		actor, err = s.Client.FetchRemoteObject(r.Context(), actorID, false)
+		if err != nil {
+			log.Errorf("failed to fetch remote actor: got err=%v", err)
+			http.Error(w, "failed to load actor", http.StatusBadRequest)
+			return
+		}
+	}
+	m, err := streams.Serialize(actor)
+	if err != nil {
+		log.Errorf("failed to serialize actor: got err=%v", err)
+		http.Error(w, "failed to load actor", http.StatusInternalServerError)
+		return
+	}
+	marshalledActivity, err := json.Marshal(m)
+	if err != nil {
+		log.Errorf("failed to marshal actor to JSON: got err=%v", err)
+		http.Error(w, "failed to load actor", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.Write(marshalledActivity)
 }
 
 func (s *Server) getFollowers(w http.ResponseWriter, r *http.Request) {
@@ -520,7 +593,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		break
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, actorID)
+	object, err := s.Client.FetchRemoteObject(ctx, actorID, false)
 	var personToFollow vocab.ActivityStreamsPerson
 	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
 		personToFollow = p
@@ -600,7 +673,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if creatorID.String() == "" {
 		return fmt.Errorf("actor ID is unspecified: got=%q", creatorID.String())
 	}
-	actor, err := s.Client.FetchRemoteObject(ctx, creatorID)
+	actor, err := s.Client.FetchRemoteObject(ctx, creatorID, false)
 	if err != nil {
 		return err
 	}
@@ -657,7 +730,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err := s.Datastore.AddActivityToSharedInbox(ctx, accept, s.URL.String()); err != nil {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, followerID)
+	object, err := s.Client.FetchRemoteObject(ctx, followerID, false)
 	if err != nil {
 		return err
 	}
