@@ -179,7 +179,7 @@ func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 	}
 	splitIdentifier := strings.Split(identifier, "@")
 	if len(splitIdentifier) != 3 {
-		log.Errorf("bad identifier receivied: want=%d, got=%v", 2, len(splitIdentifier), splitIdentifier)
+		log.Errorf("bad identifier receivied: want=%d, got=%v", 2, len(splitIdentifier))
 		http.Error(w, "failed to receive an identifier", http.StatusBadRequest)
 		return
 	}
