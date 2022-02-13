@@ -202,7 +202,6 @@ func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var webfingerResponse *WebfingerResponse
-		log.Infoln(string(res))
 		if err := json.Unmarshal(res, &webfingerResponse); err != nil {
 			log.Errorf("failed to unmarshal webfinger response: got err=%v", err)
 			http.Error(w, "failed to lookup actor", http.StatusBadRequest)
