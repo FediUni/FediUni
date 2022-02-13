@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/FediUni/FediUni/activitypub/activity"
@@ -22,6 +23,17 @@ import (
 const (
 	cacheTime = 10 * time.Minute
 )
+
+type WebfingerResponse struct {
+	Subject string          `json:"subject"`
+	Links   []WebfingerLink `json:"links"`
+}
+
+type WebfingerLink struct {
+	Rel  string `json:"rel"`
+	Type string `json:"type"`
+	Href string `json:"href"`
+}
 
 // Cache defines an interface for caching and reading the received objects.
 type Cache interface {
@@ -107,6 +119,32 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 		return nil, err
 	}
 	return streams.ToType(ctx, m)
+}
+
+// FetchRemoteActor performs a Webfinger lookup and returns an Actor.
+func (c *Client) FetchRemoteActor(ctx context.Context, username, domain string) (vocab.Type, error) {
+	res, err := c.WebfingerLookup(ctx, domain, username)
+	if err != nil {
+		log.Errorf("failed to lookup actor=%q, got err=%v", fmt.Sprintf("@%s@%s", username, domain), err)
+		return nil, fmt.Errorf("failed to fetch remote actor: got err=%v", err)
+	}
+	var webfingerResponse *WebfingerResponse
+	if err := json.Unmarshal(res, &webfingerResponse); err != nil {
+		log.Errorf("failed to unmarshal webfinger response: got err=%v", err)
+		return nil, fmt.Errorf("failed to unmarshal the WebfingerResponse: got err=%v", err)
+	}
+	var actorID *url.URL
+	for _, link := range webfingerResponse.Links {
+		if !strings.Contains(link.Type, "application/activity+json") && !strings.Contains(link.Type, "application/ld+json") {
+			continue
+		}
+		if actorID, err = url.Parse(link.Href); err != nil {
+			log.Errorf("failed to load actorID: got err=%v", err)
+			return nil, fmt.Errorf("failed to parse the URL from href=%q: got err=%v", link.Href, err)
+		}
+		break
+	}
+	return c.FetchRemoteObject(ctx, actorID, false)
 }
 
 func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.Type, keyID string, privateKey *rsa.PrivateKey) error {

@@ -61,17 +61,6 @@ type Server struct {
 	Secret       string
 }
 
-type WebfingerResponse struct {
-	Subject string          `json:"subject"`
-	Links   []WebfingerLink `json:"links"`
-}
-
-type WebfingerLink struct {
-	Rel  string `json:"rel"`
-	Type string `json:"type"`
-	Href string `json:"href"`
-}
-
 var (
 	tokenAuth *jwtauth.JWTAuth
 )
@@ -112,6 +101,7 @@ func NewServer(instanceURL string, datastore Datastore, keyGenerator actor.KeyGe
 	activitypubRouter := chi.NewRouter()
 	activitypubRouter.Get("/actor", s.getAnyActor)
 	activitypubRouter.Get("/actor/{username}", s.getActor)
+	activitypubRouter.Get("/actor/outbox", s.getAnyActorOutbox)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
 	activitypubRouter.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	activitypubRouter.Get("/actor/{username}/outbox", s.getActorOutbox)
@@ -201,7 +191,7 @@ func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to lookup actor", http.StatusBadRequest)
 			return
 		}
-		var webfingerResponse *WebfingerResponse
+		var webfingerResponse *client.WebfingerResponse
 		if err := json.Unmarshal(res, &webfingerResponse); err != nil {
 			log.Errorf("failed to unmarshal webfinger response: got err=%v", err)
 			http.Error(w, "failed to lookup actor", http.StatusBadRequest)
@@ -240,6 +230,101 @@ func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.Write(marshalledActivity)
+}
+
+func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
+	identifier := r.URL.Query().Get("identifier")
+	if identifier == "" {
+		log.Errorf("failed to receive identifier: got=%q", identifier)
+		http.Error(w, "Failed to receive an actor identifier", http.StatusBadRequest)
+		return
+	}
+	splitIdentifier := strings.Split(identifier, "@")
+	if len(splitIdentifier) != 3 {
+		log.Errorf("bad identifier receivied: want=%d, got=%v", 2, len(splitIdentifier))
+		http.Error(w, "Failed to receive an actor identifier", http.StatusBadRequest)
+		return
+	}
+	username := splitIdentifier[1]
+	domain := splitIdentifier[2]
+	actor, err := s.Client.FetchRemoteActor(r.Context(), username, domain)
+	if err != nil {
+		log.Errorf("failed to fetch a remote actor=%q: got err=%v", identifier, err)
+		http.Error(w, "Failed to load actor", http.StatusNotFound)
+		return
+	}
+	var person vocab.ActivityStreamsPerson
+	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
+		person = p
+		return nil
+	})
+	if err != nil {
+		log.Errorf("failed to create Actor Resolver: got err=%v", err)
+		http.Error(w, "Failed to load actor", http.StatusNotFound)
+		return
+	}
+	if err := resolver.Resolve(r.Context(), actor); err != nil {
+		log.Errorf("failed to resolve Actor: got err=%v", err)
+		http.Error(w, "Failed to load actor", http.StatusNotFound)
+		return
+	}
+	outbox := person.GetActivityStreamsOutbox()
+	if outbox == nil {
+		log.Errorf("failed to load outbox: got=%v", outbox)
+		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		return
+	}
+	outboxIRI := outbox.GetIRI()
+	if outboxIRI == nil {
+		log.Errorf("failed to load outbox URL: got=%v", outboxIRI)
+		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		return
+	}
+	// TODO(Jared-Mullin): We should define a function that loads the
+	// OrderedCollection and then the OrderedCollectionPage rather than guessing
+	// ?page=true will always hold for outbox.
+	outboxPageIRI, err := url.Parse(fmt.Sprintf("%s?page=true", outboxIRI.String()))
+	if err != nil {
+		log.Errorf("failed to load parse outbox URL: got=%v", outboxIRI)
+		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		return
+	}
+	outboxPage, err := s.Client.FetchRemoteObject(r.Context(), outboxPageIRI, false)
+	if err != nil {
+		log.Errorf("failed to load outbox: got=%v", outbox)
+		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		return
+	}
+	var page vocab.ActivityStreamsOrderedCollectionPage
+	resolver, err = streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsOrderedCollectionPage) error {
+		page = p
+		return nil
+	})
+	if err != nil {
+		log.Errorf("failed to create type resolver: got err=%v", err)
+		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		return
+	}
+	if err := resolver.Resolve(r.Context(), outboxPage); err != nil {
+		log.Errorf("failed to resolve %v: got err=%v", outboxPage, err)
+		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		return
+	}
+	m, err := streams.Serialize(page)
+	if err != nil {
+		log.Errorf("failed to serialize %v: got err=%v", outboxPage, err)
+		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		return
+	}
+	serializedOutbox, err := json.Marshal(m)
+	if err != nil {
+		log.Errorf("failed to serialize %v: got err=%v", m, err)
+		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.Write(serializedOutbox)
+	return
 }
 
 func (s *Server) getFollowers(w http.ResponseWriter, r *http.Request) {
@@ -569,7 +654,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Infof("Received %q", res)
-	var webfingerResponse WebfingerResponse
+	var webfingerResponse *client.WebfingerResponse
 	if err := json.Unmarshal(res, &webfingerResponse); err != nil {
 		log.Errorf("failed to perform Webfinger lookup: got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to perform Webfinger lookup"), http.StatusInternalServerError)
@@ -886,9 +971,9 @@ func (s *Server) Webfinger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := person.GetJSONLDId().Get()
-	res := &WebfingerResponse{
+	res := &client.WebfingerResponse{
 		Subject: resource,
-		Links: []WebfingerLink{
+		Links: []client.WebfingerLink{
 			{
 				Rel:  "self",
 				Type: "application/activity+json",
