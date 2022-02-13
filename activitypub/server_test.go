@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/jwtauth"
 
 	"github.com/FediUni/FediUni/activitypub/actor"
+	"github.com/FediUni/FediUni/activitypub/client"
 	"github.com/FediUni/FediUni/activitypub/user"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/google/go-cmp/cmp"
@@ -182,14 +183,14 @@ func TestWebfingerKnownAccount(t *testing.T) {
 	tests := []struct {
 		name         string
 		resource     string
-		wantResponse *WebfingerResponse
+		wantResponse *client.WebfingerResponse
 	}{
 		{
 			name:     "Test load account belonging to instance",
 			resource: "acct:brandonstark@testfediuni.xyz",
-			wantResponse: &WebfingerResponse{
+			wantResponse: &client.WebfingerResponse{
 				Subject: "acct:brandonstark@testfediuni.xyz",
-				Links: []WebfingerLink{
+				Links: []client.WebfingerLink{
 					{
 						Rel:  "self",
 						Type: "application/activity+json",
@@ -214,7 +215,7 @@ func TestWebfingerKnownAccount(t *testing.T) {
 			if err != nil {
 				t.Errorf("%s: Failed to read response returned: got err=%v", webfingerURL, err)
 			}
-			var gotResponse *WebfingerResponse
+			var gotResponse *client.WebfingerResponse
 			if err := json.Unmarshal(body, &gotResponse); err != nil {
 				t.Errorf("%s: Failed to unmarshal response: got err=%v", webfingerURL, err)
 			}
