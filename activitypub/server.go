@@ -86,7 +86,7 @@ func NewServer(instanceURL string, datastore Datastore, keyGenerator actor.KeyGe
 		URL:          url,
 		Datastore:    datastore,
 		KeyGenerator: keyGenerator,
-		Client:       client.NewClient(url),
+		Client:       client.NewClient(url, "redis:6379", viper.GetString("REDIS_PASSWORD")),
 		Redis: redis.NewClient(&redis.Options{
 			Addr:     "redis:6379",
 			Password: viper.GetString("REDIS_PASSWORD"),
@@ -520,7 +520,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		break
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, actorID)
+	object, err := s.Client.FetchRemoteObject(ctx, actorID, false)
 	var personToFollow vocab.ActivityStreamsPerson
 	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
 		personToFollow = p
@@ -600,7 +600,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if creatorID.String() == "" {
 		return fmt.Errorf("actor ID is unspecified: got=%q", creatorID.String())
 	}
-	actor, err := s.Client.FetchRemoteObject(ctx, creatorID)
+	actor, err := s.Client.FetchRemoteObject(ctx, creatorID, false)
 	if err != nil {
 		return err
 	}
@@ -657,7 +657,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err := s.Datastore.AddActivityToSharedInbox(ctx, accept, s.URL.String()); err != nil {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, followerID)
+	object, err := s.Client.FetchRemoteObject(ctx, followerID, false)
 	if err != nil {
 		return err
 	}
