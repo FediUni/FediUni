@@ -44,6 +44,7 @@ type Datastore interface {
 	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
 	AddActivityToActorInbox(context.Context, vocab.Type, string) error
 	AddFollowerToActor(context.Context, string, string) error
+	AddActorToFollows(context.Context, string, string) error
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
 	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
@@ -525,7 +526,6 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
-
 	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledOrderedCollection)
 }
@@ -934,7 +934,7 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 	if actorID == nil {
 		return fmt.Errorf("follower ID is unspecified: got=%v", followerID)
 	}
-	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
+	if err := s.Datastore.AddActorToFollows(ctx, actorID.String(), followerID.String()); err != nil {
 		return fmt.Errorf("failed to add Follower=%q to Actor=%q: got err=%v", followerID.String(), actorID.String(), err)
 	}
 	return nil

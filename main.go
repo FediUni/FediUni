@@ -50,7 +50,7 @@ func main() {
 			log.Fatalf("failed to disconnect MongoDB client: %v", err)
 		}
 	}()
-	datastore, err := mongowrapper.NewDatastore(client)
+	datastore, err := mongowrapper.NewDatastore(client, "FediUni")
 	if err != nil {
 		log.Fatalln(err)
 	}

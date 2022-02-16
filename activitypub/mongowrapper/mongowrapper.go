@@ -19,7 +19,8 @@ import (
 
 // Datastore wraps the MongoDB client and handles MongoDB operations.
 type Datastore struct {
-	client *mongo.Client
+	client   *mongo.Client
+	database string
 }
 
 type followersCollection struct {
@@ -27,9 +28,10 @@ type followersCollection struct {
 }
 
 // NewDatastore returns an initialized Datastore which handles MongoDB operations.
-func NewDatastore(client *mongo.Client) (*Datastore, error) {
+func NewDatastore(client *mongo.Client, database string) (*Datastore, error) {
 	return &Datastore{
-		client: client,
+		client:   client,
+		database: database,
 	}, nil
 }
 
@@ -202,11 +204,25 @@ func (d *Datastore) GetActivityByActivityID(ctx context.Context, activityID stri
 	return activity, nil
 }
 
+// AddFollowerToActor adds the Follower ID to the Actor ID.
 func (d *Datastore) AddFollowerToActor(ctx context.Context, actorID, followerID string) error {
 	log.Infof("Adding Follower=%q to Actor=%q", followerID, actorID)
 	followers := d.client.Database("FediUni").Collection("followers")
 	opts := options.Update().SetUpsert(true)
 	res, err := followers.UpdateOne(ctx, bson.D{{"_id", actorID}}, bson.D{{"$addToSet", bson.D{{"followers", followerID}}}}, opts)
+	if err != nil {
+		return fmt.Errorf("failed to add follower to actor: got err=%v", err)
+	}
+	log.Infof("Inserted Document: got=%v", res)
+	return nil
+}
+
+// AddActorToFollows adds the Actor ID to the Follower ID specified.
+func (d *Datastore) AddActorToFollows(ctx context.Context, actorID, followerID string) error {
+	log.Infof("Adding Follows ActorID=%q to Follower=%q", actorID, followerID)
+	following := d.client.Database("FediUni").Collection("following")
+	opts := options.Update().SetUpsert(true)
+	res, err := following.UpdateOne(ctx, bson.D{{"_id", followerID}}, bson.D{{"$addToSet", bson.D{{"following", actorID}}}}, opts)
 	if err != nil {
 		return fmt.Errorf("failed to add follower to actor: got err=%v", err)
 	}

@@ -79,6 +79,10 @@ func (d *TestDatastore) AddFollowerToActor(context.Context, string, string) erro
 	return fmt.Errorf("AddFollowerToActor() is unimplemented")
 }
 
+func (d *TestDatastore) AddActorToFollows(context.Context, string, string) error {
+	return fmt.Errorf("AddActorToFollows() is unimplemented")
+}
+
 func (d *TestDatastore) RemoveFollowerFromActor(ctx context.Context, actorID, followerID string) error {
 	return fmt.Errorf("RemoveFollowerFromActor() is unimplemented")
 }
