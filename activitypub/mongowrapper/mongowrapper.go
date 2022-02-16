@@ -27,6 +27,10 @@ type followersCollection struct {
 	Followers []string `bson:"followers"`
 }
 
+type followingCollection struct {
+	Following []string `bson:"following"`
+}
+
 // NewDatastore returns an initialized Datastore which handles MongoDB operations.
 func NewDatastore(client *mongo.Client, database string) (*Datastore, error) {
 	return &Datastore{
@@ -83,6 +87,35 @@ func (d *Datastore) GetFollowersByUsername(ctx context.Context, username string)
 		orderedFollowers.AppendActivityStreamsPerson(p)
 	}
 	followers.SetActivityStreamsOrderedItems(orderedFollowers)
+	return followers, nil
+}
+
+// GetFollowingByUsername returns an OrderedCollection of Following IDs.
+func (d *Datastore) GetFollowingByUsername(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
+	actor, err := d.GetActorByUsername(ctx, username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load actor username=%q: got err=%v", username, err)
+	}
+	actors := d.client.Database("FediUni").Collection("following")
+	filter := bson.D{{"_id", actor.GetJSONLDId().Get().String()}}
+	var f followingCollection
+	if err := actors.FindOne(ctx, filter).Decode(&f); err != nil {
+		return nil, err
+	}
+	followers := streams.NewActivityStreamsOrderedCollection()
+	orderedFollowing := streams.NewActivityStreamsOrderedItemsProperty()
+	for _, following := range f.Following {
+		followerID, err := url.Parse(following)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %q as URL: got err=%v", following, err)
+		}
+		p := streams.NewActivityStreamsPerson()
+		idProperty := streams.NewJSONLDIdProperty()
+		idProperty.Set(followerID)
+		p.SetJSONLDId(idProperty)
+		orderedFollowing.AppendActivityStreamsPerson(p)
+	}
+	followers.SetActivityStreamsOrderedItems(orderedFollowing)
 	return followers, nil
 }
 

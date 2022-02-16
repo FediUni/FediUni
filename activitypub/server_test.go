@@ -95,6 +95,10 @@ func (d *TestDatastore) GetFollowersByUsername(context.Context, string) (vocab.A
 	return nil, fmt.Errorf("GetFollowersByUsername() is unimplemented")
 }
 
+func (d *TestDatastore) GetFollowingByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error) {
+	return nil, fmt.Errorf("GetFollowingByUsername() is unimplemented")
+}
+
 func (d *TestDatastore) AddObjectsToActorInbox(context.Context, []vocab.Type, string) error {
 	return fmt.Errorf("AddObjectsToActorInbox() is unimplemented")
 }
