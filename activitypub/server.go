@@ -39,11 +39,13 @@ type Datastore interface {
 	GetActivityByObjectID(context.Context, string, string) (vocab.Type, error)
 	GetActivityByActivityID(context.Context, string) (vocab.Type, error)
 	GetFollowersByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetFollowingByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	CreateUser(context.Context, *user.User) error
 	GetUserByUsername(context.Context, string) (*user.User, error)
 	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
 	AddActivityToActorInbox(context.Context, vocab.Type, string) error
 	AddFollowerToActor(context.Context, string, string) error
+	AddActorToFollows(context.Context, string, string) error
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
 	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
@@ -106,6 +108,7 @@ func NewServer(instanceURL string, datastore Datastore, keyGenerator actor.KeyGe
 	activitypubRouter.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	activitypubRouter.Get("/actor/{username}/outbox", s.getActorOutbox)
 	activitypubRouter.Get("/actor/{username}/followers", s.getFollowers)
+	activitypubRouter.Get("/actor/{username}/following", s.getFollowing)
 	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
 	activitypubRouter.Post("/register", s.createUser)
 	activitypubRouter.Post("/login", s.login)
@@ -352,7 +355,34 @@ func (s *Server) getFollowers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
+	w.Write(marshalledActivity)
+}
 
+func (s *Server) getFollowing(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		http.Error(w, "username is unspecified", http.StatusBadRequest)
+		return
+	}
+	followers, err := s.Datastore.GetFollowingByUsername(r.Context(), username)
+	if err != nil {
+		log.Errorf("failed to load followers from Datastore: got err=%v", err)
+		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	m, err := streams.Serialize(followers)
+	if err != nil {
+		log.Errorf("failed to serialize activity : got err=%v", err)
+		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	marshalledActivity, err := json.Marshal(m)
+	if err != nil {
+		log.Errorf("failed to marshal activity to JSON: got err=%v", err)
+		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
 	w.Write(marshalledActivity)
 }
 
@@ -525,7 +555,6 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
-
 	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledOrderedCollection)
 }
@@ -934,7 +963,7 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 	if actorID == nil {
 		return fmt.Errorf("follower ID is unspecified: got=%v", followerID)
 	}
-	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
+	if err := s.Datastore.AddActorToFollows(ctx, actorID.String(), followerID.String()); err != nil {
 		return fmt.Errorf("failed to add Follower=%q to Actor=%q: got err=%v", followerID.String(), actorID.String(), err)
 	}
 	return nil

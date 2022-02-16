@@ -79,6 +79,10 @@ func (d *TestDatastore) AddFollowerToActor(context.Context, string, string) erro
 	return fmt.Errorf("AddFollowerToActor() is unimplemented")
 }
 
+func (d *TestDatastore) AddActorToFollows(context.Context, string, string) error {
+	return fmt.Errorf("AddActorToFollows() is unimplemented")
+}
+
 func (d *TestDatastore) RemoveFollowerFromActor(ctx context.Context, actorID, followerID string) error {
 	return fmt.Errorf("RemoveFollowerFromActor() is unimplemented")
 }
@@ -89,6 +93,10 @@ func (d *TestDatastore) GetUserByUsername(_ context.Context, username string) (*
 
 func (d *TestDatastore) GetFollowersByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error) {
 	return nil, fmt.Errorf("GetFollowersByUsername() is unimplemented")
+}
+
+func (d *TestDatastore) GetFollowingByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error) {
+	return nil, fmt.Errorf("GetFollowingByUsername() is unimplemented")
 }
 
 func (d *TestDatastore) AddObjectsToActorInbox(context.Context, []vocab.Type, string) error {
