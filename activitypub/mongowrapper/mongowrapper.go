@@ -349,8 +349,7 @@ func (d *Datastore) GetFollowerStatus(ctx context.Context, followerID, followedI
 	err := res.Decode(&m)
 	if err == mongo.ErrNoDocuments {
 		return 0, nil
-	}
-	if err != nil {
+	} else if err != nil {
 		return 0, fmt.Errorf("Failed to retrieve follow status: got err=%v", err)
 	}
 	return 2, nil
