@@ -337,3 +337,20 @@ func (d *Datastore) GetActorInbox(ctx context.Context, userID string) (vocab.Act
 	orderedCollection.SetActivityStreamsOrderedItems(orderedItems)
 	return orderedCollection, nil
 }
+
+func (d *Datastore) GetFollowerStatus(ctx context.Context, followerID, followedID string) (int, error) {
+	following := d.client.Database("FediUni").Collection("following")
+	filter := bson.D{{"_id", followerID}, {"following", followedID}}
+	res := following.FindOne(ctx, filter)
+	if err := res.Err(); err != nil {
+		return 0, fmt.Errorf("Failed to retrieve follow status: got err=%v", err)
+	}
+	var m map[string]interface{}
+	if err := res.Decode(&m); err != nil {
+		return 0, fmt.Errorf("Failed to retrieve follow status: got err=%v", err)
+	}
+	if m == nil {
+		return 0, nil
+	}
+	return 2, nil
+}
