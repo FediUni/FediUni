@@ -40,6 +40,7 @@ type Datastore interface {
 	GetActivityByActivityID(context.Context, string) (vocab.Type, error)
 	GetFollowersByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	GetFollowingByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetFollowerStatus(context.Context, string, string) (int, error)
 	CreateUser(context.Context, *user.User) error
 	GetUserByUsername(context.Context, string) (*user.User, error)
 	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
@@ -113,6 +114,7 @@ func NewServer(instanceURL string, datastore Datastore, keyGenerator actor.KeyGe
 	activitypubRouter.Post("/register", s.createUser)
 	activitypubRouter.Post("/login", s.login)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow/status", s.checkFollowStatus)
 
 	s.Router.Get("/.well-known/webfinger", s.Webfinger)
 	s.Router.Mount("/api", activitypubRouter)
@@ -771,6 +773,61 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	return
+}
+
+func (s *Server) checkFollowStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		return
+	}
+	rawUserID := claims["userID"]
+	var currentUser string
+	switch rawUserID.(type) {
+	case string:
+		currentUser = rawUserID.(string)
+	default:
+		log.Errorf("Invalid actor ID presented: got %v", rawUserID)
+		http.Error(w, fmt.Sprintf("failed to load username"), http.StatusUnauthorized)
+		return
+	}
+	raw, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Errorf("Failed to read request body: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to read body"), http.StatusInternalServerError)
+		return
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		log.Errorf("Failed to unmarshal follower status: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to unmarshal follower status"), http.StatusInternalServerError)
+		return
+	}
+	rawUserID = m["actorID"]
+	var otherUser string
+	switch rawUserID.(type) {
+	case string:
+		otherUser = rawUserID.(string)
+	default:
+		log.Errorf("Invalid actor ID presented: got %v", rawUserID)
+		http.Error(w, fmt.Sprintf("failed to load username"), http.StatusUnauthorized)
+		return
+	}
+	status, err := s.Datastore.GetFollowerStatus(ctx, currentUser, otherUser)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to determine follower status"), http.StatusInternalServerError)
+		return
+	}
+	m = map[string]interface{}{}
+	m["followerStatus"] = status
+	res, err := json.Marshal(m)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to determine follower status"), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.Write(res)
 }
 
 func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.Type, receiverID string) error {

@@ -43,6 +43,10 @@ func NewTestDatastore(rawURL string) *TestDatastore {
 	}
 }
 
+func (d *TestDatastore) GetFollowerStatus(context.Context, string, string) (int, error) {
+	return 0, fmt.Errorf("GetFollowerStatus() is unimplemented")
+}
+
 func (d *TestDatastore) GetActorByUsername(_ context.Context, username string) (actor.Person, error) {
 	if a := d.knownActors[username]; a != nil {
 		return a, nil
