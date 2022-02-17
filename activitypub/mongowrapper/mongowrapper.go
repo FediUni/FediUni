@@ -340,7 +340,8 @@ func (d *Datastore) GetActorInbox(ctx context.Context, userID string) (vocab.Act
 
 func (d *Datastore) GetFollowerStatus(ctx context.Context, followerID, followedID string) (int, error) {
 	following := d.client.Database("FediUni").Collection("following")
-	filter := bson.D{{"_id", followerID}, {"following", followedID}}
+	filter := bson.M{"_id": followerID, "following": followedID}
+	log.Infof("Checking If ActorID=%q follows ActorID=%q", followerID, followedID)
 	res := following.FindOne(ctx, filter)
 	if err := res.Err(); err != nil && err != mongo.ErrNoDocuments {
 		return 0, fmt.Errorf("Failed to retrieve follow status from Mongo: got err=%v", err)
