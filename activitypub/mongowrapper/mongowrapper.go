@@ -343,12 +343,12 @@ func (d *Datastore) GetFollowerStatus(ctx context.Context, followerID, followedI
 	filter := bson.D{{"_id", followerID}, {"following", followedID}}
 	res := following.FindOne(ctx, filter)
 	if err := res.Err(); err != nil && err != mongo.ErrNoDocuments {
-		return 0, fmt.Errorf("Failed to retrieve follow status: got err=%v", err)
+		return 0, fmt.Errorf("Failed to retrieve follow status from Mongo: got err=%v", err)
 	}
 	var m map[string]interface{}
 	err := res.Decode(&m)
 	if err != nil {
-		return 0, fmt.Errorf("Failed to retrieve follow status: got err=%v", err)
+		return 0, fmt.Errorf("Failed to decode result from Mongo: got err=%v", err)
 	}
 	return 2, nil
 }
