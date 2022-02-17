@@ -816,6 +816,7 @@ func (s *Server) checkFollowStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := s.Datastore.GetFollowerStatus(ctx, currentUser, otherUser)
 	if err != nil {
+		log.Errorf("Failed to determine follower status: got err=%v", err)
 		http.Error(w, fmt.Sprintf("Failed to determine follower status"), http.StatusInternalServerError)
 		return
 	}
@@ -823,6 +824,7 @@ func (s *Server) checkFollowStatus(w http.ResponseWriter, r *http.Request) {
 	m["followerStatus"] = status
 	res, err := json.Marshal(m)
 	if err != nil {
+		log.Errorf("Failed to marshal response as JSON: got err=%v", err)
 		http.Error(w, fmt.Sprintf("Failed to determine follower status"), http.StatusInternalServerError)
 		return
 	}
