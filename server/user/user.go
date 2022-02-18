@@ -2,7 +2,7 @@ package user
 
 import (
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/actor"
+	"github.com/FediUni/FediUni/server/actor"
 	"golang.org/x/crypto/bcrypt"
 )
 

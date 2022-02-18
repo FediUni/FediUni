@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/actor"
+	"github.com/FediUni/FediUni/server/actor"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/go-fed/httpsig"

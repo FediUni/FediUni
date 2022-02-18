@@ -1,4 +1,4 @@
-package activitypub
+package server
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/FediUni/FediUni/activitypub/activity"
-	"github.com/FediUni/FediUni/activitypub/actor"
-	"github.com/FediUni/FediUni/activitypub/client"
-	"github.com/FediUni/FediUni/activitypub/follower"
-	"github.com/FediUni/FediUni/activitypub/undo"
-	"github.com/FediUni/FediUni/activitypub/user"
-	"github.com/FediUni/FediUni/activitypub/validation"
+	"github.com/FediUni/FediUni/server/activity"
+	"github.com/FediUni/FediUni/server/actor"
+	"github.com/FediUni/FediUni/server/client"
+	"github.com/FediUni/FediUni/server/follower"
+	"github.com/FediUni/FediUni/server/undo"
+	"github.com/FediUni/FediUni/server/user"
+	"github.com/FediUni/FediUni/server/validation"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -68,7 +68,7 @@ var (
 	tokenAuth *jwtauth.JWTAuth
 )
 
-func NewServer(instanceURL string, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
+func New(instanceURL string, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
 	url, err := url.Parse(instanceURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse instanceURL=%q: got err=%v", instanceURL, err)

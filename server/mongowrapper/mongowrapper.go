@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/FediUni/FediUni/activitypub/actor"
-	"github.com/FediUni/FediUni/activitypub/user"
+	"github.com/FediUni/FediUni/server/actor"
+	"github.com/FediUni/FediUni/server/user"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	log "github.com/golang/glog"

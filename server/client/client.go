@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FediUni/FediUni/activitypub/activity"
-	"github.com/FediUni/FediUni/activitypub/validation"
+	"github.com/FediUni/FediUni/server/activity"
+	"github.com/FediUni/FediUni/server/validation"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/go-redis/redis"

@@ -1,4 +1,4 @@
-package activitypub
+package server
 
 import (
 	"bytes"
@@ -14,9 +14,9 @@ import (
 
 	"github.com/go-chi/jwtauth"
 
-	"github.com/FediUni/FediUni/activitypub/actor"
-	"github.com/FediUni/FediUni/activitypub/client"
-	"github.com/FediUni/FediUni/activitypub/user"
+	"github.com/FediUni/FediUni/server/actor"
+	"github.com/FediUni/FediUni/server/client"
+	"github.com/FediUni/FediUni/server/user"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/google/go-cmp/cmp"
 )
@@ -126,7 +126,7 @@ func (g *TestKeyGenerator) GetPrivateKeyPEM() ([]byte, error) {
 }
 
 func TestGetActor(t *testing.T) {
-	s, _ := NewServer("https://testserver.com", NewTestDatastore("https://testserver.com"), nil, "")
+	s, _ := New("https://testserver.com", NewTestDatastore("https://testserver.com"), nil, "")
 	server := httptest.NewServer(s.Router)
 	defer server.Close()
 	resp, err := http.Get(fmt.Sprintf("%s/actor/bendean", server.URL))
@@ -174,7 +174,7 @@ func TestCreateUser(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := NewServer("https://testserver.com", nil, &TestKeyGenerator{}, "")
+			s, _ := New("https://testserver.com", nil, &TestKeyGenerator{}, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			registrationURL := fmt.Sprintf("%s/api/register", server.URL)
@@ -214,7 +214,7 @@ func TestWebfingerKnownAccount(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := NewServer("https://testfediuni.xyz", NewTestDatastore("https://testfediuni.xyz"), nil, "")
+			s, _ := New("https://testfediuni.xyz", NewTestDatastore("https://testfediuni.xyz"), nil, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -262,7 +262,7 @@ func TestWebfinger(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := NewServer("https://testfediuni.xyz", NewTestDatastore("https://testserver.com"), nil, "")
+			s, _ := New("https://testfediuni.xyz", NewTestDatastore("https://testserver.com"), nil, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -296,7 +296,7 @@ func TestLogin(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			datastore := NewTestDatastore("https://testserver.com")
 			secret := "thisisatestsecret"
-			s, _ := NewServer("https://testfediuni.xyz", datastore, nil, secret)
+			s, _ := New("https://testfediuni.xyz", datastore, nil, secret)
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			u := &user.User{

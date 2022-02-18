@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/FediUni/FediUni/activitypub"
-	"github.com/FediUni/FediUni/activitypub/actor"
-	"github.com/FediUni/FediUni/activitypub/mongowrapper"
+	"github.com/FediUni/FediUni/server"
+	"github.com/FediUni/FediUni/server/actor"
+	"github.com/FediUni/FediUni/server/mongowrapper"
 	log "github.com/golang/glog"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -55,7 +55,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	s, err := activitypub.NewServer(instanceURL, datastore, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"))
+	s, err := server.New(instanceURL, datastore, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"))
 	if err != nil {
 		log.Fatalf("failed to create service: got err=%v", err)
 	}

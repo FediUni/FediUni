@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/FediUni/FediUni/activitypub/actor"
+	"github.com/FediUni/FediUni/server/actor"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-fed/activity/streams"
 	"net/http"
