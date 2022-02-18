@@ -2,6 +2,7 @@ package mongowrapper
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -344,13 +345,12 @@ func (d *Datastore) GetFollowerStatus(ctx context.Context, followerID, followedI
 	log.Infof("Checking If ActorID=%q follows ActorID=%q", followerID, followedID)
 	res := following.FindOne(ctx, filter)
 	log.Infof("Received Result=%v", res)
-	if err := res.Err(); err != nil && err != mongo.ErrNoDocuments {
+	err := res.Err()
+	if err != nil && err != mongo.ErrNoDocuments {
 		return 0, fmt.Errorf("Failed to retrieve follow status from Mongo: got err=%v", err)
 	}
-	var f followersCollection
-	if err := res.Decode(&f); err != nil {
-		return 0, err
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return 0, nil
 	}
-	log.Infoln(f)
 	return 2, nil
 }
