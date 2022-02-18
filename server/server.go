@@ -814,7 +814,13 @@ func (s *Server) checkFollowStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to load username"), http.StatusUnauthorized)
 		return
 	}
-	status, err := s.Datastore.GetFollowerStatus(ctx, currentUser, otherUser)
+	followedID, err := s.Client.ResolveActorIdentifierToID(ctx, otherUser)
+	if err != nil || followedID == nil {
+		log.Errorf("Invalid actor ID presented: got %v", rawUserID)
+		http.Error(w, fmt.Sprintf("failed to resolve actor ID"), http.StatusBadRequest)
+		return
+	}
+	status, err := s.Datastore.GetFollowerStatus(ctx, currentUser, followedID.String())
 	if err != nil {
 		log.Errorf("Failed to determine follower status: got err=%v", err)
 		http.Error(w, fmt.Sprintf("Failed to determine follower status"), http.StatusInternalServerError)

@@ -175,3 +175,15 @@ func (g *RSAKeyGenerator) WritePrivateKey(privateKeyPath string) error {
 	}
 	return nil
 }
+
+// IsIdentifier is of the form @username@domain then this function returns true.
+func IsIdentifier(identifier string) (bool, error) {
+	if identifier == "" {
+		return false, fmt.Errorf("identifier must not be empty: got=%q", identifier)
+	}
+	splitIdentifier := strings.Split(identifier, "@")
+	if len(splitIdentifier) == 3 {
+		return true, nil
+	}
+	return false, nil
+}
