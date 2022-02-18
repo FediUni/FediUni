@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/FediUni/FediUni/server/activity"
+	"github.com/FediUni/FediUni/server/actor"
 	"github.com/FediUni/FediUni/server/validation"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
@@ -119,6 +120,41 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 		return nil, err
 	}
 	return streams.ToType(ctx, m)
+}
+
+func (c *Client) ResolveActorIdentifierToID(ctx context.Context, identifier string) (*url.URL, error) {
+	isIdentifier, err := actor.IsIdentifier(identifier)
+	if err != nil {
+		return nil, fmt.Errorf("failed to receive an identifier: got=%q", identifier)
+	}
+	if !isIdentifier {
+		return nil, fmt.Errorf("failed to receive an identifier: got=%q", identifier)
+	}
+	splitIdentifier := strings.Split(identifier, "@")
+	username := splitIdentifier[1]
+	domain := splitIdentifier[2]
+	res, err := c.WebfingerLookup(ctx, domain, username)
+	if err != nil {
+		log.Errorf("failed to lookup actor=%q, got err=%v", fmt.Sprintf("@%s@%s", username, domain), err)
+		return nil, fmt.Errorf("failed to fetch remote actor: got err=%v", err)
+	}
+	var webfingerResponse *WebfingerResponse
+	if err := json.Unmarshal(res, &webfingerResponse); err != nil {
+		log.Errorf("failed to unmarshal webfinger response: got err=%v", err)
+		return nil, fmt.Errorf("failed to unmarshal the WebfingerResponse: got err=%v", err)
+	}
+	var actorID *url.URL
+	for _, link := range webfingerResponse.Links {
+		if !strings.Contains(link.Type, "application/activity+json") && !strings.Contains(link.Type, "application/ld+json") {
+			continue
+		}
+		if actorID, err = url.Parse(link.Href); err != nil {
+			log.Errorf("failed to load actorID: got err=%v", err)
+			return nil, fmt.Errorf("failed to parse the URL from href=%q: got err=%v", link.Href, err)
+		}
+		break
+	}
+	return actorID, nil
 }
 
 // FetchRemoteActor performs a Webfinger lookup and returns an Actor.
