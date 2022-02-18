@@ -329,7 +329,7 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 			iter.SetActivityStreamsPerson(person)
 		}
 	}
-	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
+	for iter := announce.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		if !iter.IsIRI() {
 			continue
 		}
