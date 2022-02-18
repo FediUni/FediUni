@@ -351,5 +351,6 @@ func (d *Datastore) GetFollowerStatus(ctx context.Context, followerID, followedI
 	if err := res.Decode(&f); err != nil {
 		return 0, err
 	}
+	log.Infoln(f)
 	return 2, nil
 }
