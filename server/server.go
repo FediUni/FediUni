@@ -862,6 +862,36 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, receiverID)
 }
 
+func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest vocab.Type, receiverID string) error {
+	log.Infoln("Received Announce Activity")
+	announce, err := activity.ParseAnnounceActivity(ctx, activityRequest)
+	if err != nil {
+		return err
+	}
+	if err := s.Client.Announce(ctx, announce); err != nil {
+		return fmt.Errorf("failed to dereference Announce Activity: got err=%v", err)
+	}
+	for iter := announce.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
+		switch {
+		case iter.IsActivityStreamsNote():
+			note := iter.GetActivityStreamsNote()
+			content := note.GetActivityStreamsContent()
+			for c := content.Begin(); c != nil; c = c.Next() {
+				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
+			}
+		case iter.IsActivityStreamsImage():
+			image := iter.GetActivityStreamsImage()
+			content := image.GetActivityStreamsName()
+			for c := content.Begin(); c != nil; c = c.Next() {
+				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
+			}
+		default:
+			return fmt.Errorf("non-note activity presented")
+		}
+	}
+	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, receiverID)
+}
+
 // handleFollowRequest allows the actor to follow the requested person on this instance.
 // Currently, follow automatically accepts all incoming handleFollowRequest requests, but
 // users should be able to confirm and deny handleFollowRequest requests before the Accept
