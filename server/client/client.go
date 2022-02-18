@@ -119,7 +119,22 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 		log.Infof("Storing ObjectID=%q in cache...", iri.String())
 		return nil, err
 	}
-	return streams.ToType(ctx, m)
+	object, err := streams.ToType(ctx, m)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve object to type: got err=%v", err)
+	}
+	switch typeName := object.GetTypeName(); typeName {
+	case "Create":
+		create, err := activity.ParseCreateActivity(ctx, object)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.Create(ctx, create); err != nil {
+			return nil, err
+		}
+	}
+
+	return object, nil
 }
 
 func (c *Client) ResolveActorIdentifierToID(ctx context.Context, identifier string) (*url.URL, error) {
@@ -236,4 +251,27 @@ func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID str
 		return nil, fmt.Errorf("received empty body: %q", string(body))
 	}
 	return body, nil
+}
+
+// Create dereferences the actor and object fields of the activity.
+func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate) error {
+	for iter := create.GetActivityStreamsActor().Begin(); iter != nil; iter = iter.Next() {
+		if !iter.IsIRI() {
+			continue
+		}
+		actorID := iter.GetIRI()
+		actorRetrieved, err := c.FetchRemoteObject(ctx, actorID, false)
+		if err != nil {
+			return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID.String(), err)
+		}
+		switch actorRetrieved.GetTypeName() {
+		case "Person":
+			person, err := actor.ParsePerson(ctx, actorRetrieved)
+			if err != nil {
+				return fmt.Errorf("failed to parse Actor ID=%q as Person: got err=%v", actorID.String(), err)
+			}
+			iter.SetActivityStreamsPerson(person)
+		}
+	}
+	return nil
 }

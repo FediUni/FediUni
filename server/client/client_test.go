@@ -67,3 +67,74 @@ func TestFetchRemoteObject(t *testing.T) {
 		})
 	}
 }
+
+func TestCreate(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   []string
+		value []map[string]interface{}
+		want  map[string]interface{}
+	}{
+		{
+			name: "Test dereference Actor IRI in Create Activity",
+			key: []string{
+				"https://non-existent-site.com/activity/fake-create",
+				"https://non-existent-site.com/actor/fake-actor",
+			},
+			value: []map[string]interface{}{
+				{
+					"@context": "https://www.w3.org/ns/activitystreams",
+					"id":       "https://non-existent-site.com/actor/fake-create",
+					"type":     "Create",
+					"actor":    "https://non-existent-site.com/actor/fake-actor",
+				},
+				{
+					"@context": "https://www.w3.org/ns/activitystreams",
+					"id":       "https://non-existent-site.com/actor/fake-actor",
+					"type":     "Person",
+				},
+			},
+			want: map[string]interface{}{
+				"@context": "https://www.w3.org/ns/activitystreams",
+				"id":       "https://non-existent-site.com/actor/fake-create",
+				"type":     "Create",
+				"actor": map[string]interface{}{
+					"id":   "https://non-existent-site.com/actor/fake-actor",
+					"type": "Person",
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		marshalledCreate, err := json.Marshal(test.value[0])
+		if err != nil {
+			t.Fatalf("failed to marshal value: got err=%v", err)
+		}
+		marshalledActor, err := json.Marshal(test.value[1])
+		if err != nil {
+			t.Fatalf("failed to marshal value: got err=%v", err)
+		}
+		t.Run(test.name, func(t *testing.T) {
+			client := &Client{
+				Cache: &TestCache{
+					cache: map[string][]byte{
+						test.key[0]: marshalledCreate,
+						test.key[1]: marshalledActor,
+					},
+				},
+			}
+			iri, err := url.Parse(test.key[0])
+			if err != nil {
+				t.Errorf("failed to parse key=%q: got err=%v", test.key, err)
+			}
+			object, err := client.FetchRemoteObject(context.Background(), iri, false)
+			if err != nil {
+				t.Errorf("client.FetchRemoteObject(): failed to fetch remote object: got err=%v", err)
+			}
+			gotObject, err := streams.Serialize(object)
+			if d := cmp.Diff(gotObject, test.want); d != "" {
+				t.Errorf("client.FetchRemoteObject(): returned a different object: (-want +got) %s", d)
+			}
+		})
+	}
+}
