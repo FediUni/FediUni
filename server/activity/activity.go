@@ -34,3 +34,18 @@ func ParseCreateActivity(ctx context.Context, activity vocab.Type) (vocab.Activi
 	}
 	return create, nil
 }
+
+func ParseAnnounceActivity(ctx context.Context, activity vocab.Type) (vocab.ActivityStreamsAnnounce, error) {
+	var announce vocab.ActivityStreamsAnnounce
+	announceResolver, err := streams.NewTypeResolver(func(ctx context.Context, a vocab.ActivityStreamsAnnounce) error {
+		announce = a
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := announceResolver.Resolve(ctx, activity); err != nil {
+		return nil, err
+	}
+	return announce, nil
+}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/FediUni/FediUni/server/activity"
 	"github.com/FediUni/FediUni/server/actor"
+	"github.com/FediUni/FediUni/server/object"
 	"github.com/FediUni/FediUni/server/validation"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
@@ -130,6 +131,14 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 			return nil, err
 		}
 		if err := c.Create(ctx, create); err != nil {
+			return nil, err
+		}
+	case "Announce":
+		announce, err := activity.ParseAnnounceActivity(ctx, object)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.Announce(ctx, announce); err != nil {
 			return nil, err
 		}
 	}
@@ -256,6 +265,96 @@ func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID str
 // Create dereferences the actor and object fields of the activity.
 func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate) error {
 	for iter := create.GetActivityStreamsActor().Begin(); iter != nil; iter = iter.Next() {
+		if !iter.IsIRI() {
+			continue
+		}
+		actorID := iter.GetIRI()
+		actorRetrieved, err := c.FetchRemoteObject(ctx, actorID, false)
+		if err != nil {
+			return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID.String(), err)
+		}
+		switch actorRetrieved.GetTypeName() {
+		case "Person":
+			person, err := actor.ParsePerson(ctx, actorRetrieved)
+			if err != nil {
+				return fmt.Errorf("failed to parse Actor ID=%q as Person: got err=%v", actorID.String(), err)
+			}
+			iter.SetActivityStreamsPerson(person)
+		}
+	}
+	if create.GetActivityStreamsObject() == nil {
+		return fmt.Errorf("create activity fails to provide an object: got=%v", nil)
+	}
+	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
+		if !iter.IsIRI() {
+			continue
+		}
+		objectID := iter.GetIRI()
+		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false)
+		if err != nil {
+			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
+		}
+		switch objectRetrieved.GetTypeName() {
+		case "Note":
+			note, err := object.ParseNote(ctx, objectRetrieved)
+			if err != nil {
+				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", objectID.String(), err)
+			}
+			if err := c.Note(ctx, note); err != nil {
+				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", objectID.String(), err)
+			}
+			iter.SetActivityStreamsNote(note)
+		}
+	}
+	return nil
+}
+
+// Announce dereferences the actor and object fields of the activity.
+func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnnounce) error {
+	for iter := announce.GetActivityStreamsActor().Begin(); iter != nil; iter = iter.Next() {
+		if !iter.IsIRI() {
+			continue
+		}
+		actorID := iter.GetIRI()
+		actorRetrieved, err := c.FetchRemoteObject(ctx, actorID, false)
+		if err != nil {
+			return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID.String(), err)
+		}
+		switch actorRetrieved.GetTypeName() {
+		case "Person":
+			person, err := actor.ParsePerson(ctx, actorRetrieved)
+			if err != nil {
+				return fmt.Errorf("failed to parse Actor ID=%q as Person: got err=%v", actorID.String(), err)
+			}
+			iter.SetActivityStreamsPerson(person)
+		}
+	}
+	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
+		if !iter.IsIRI() {
+			continue
+		}
+		objectID := iter.GetIRI()
+		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false)
+		if err != nil {
+			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
+		}
+		switch objectRetrieved.GetTypeName() {
+		case "Note":
+			note, err := object.ParseNote(ctx, objectRetrieved)
+			if err != nil {
+				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", objectID.String(), err)
+			}
+			if err := c.Note(ctx, note); err != nil {
+				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", objectID.String(), err)
+			}
+			iter.SetActivityStreamsNote(note)
+		}
+	}
+	return nil
+}
+
+func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote) error {
+	for iter := note.GetActivityStreamsAttributedTo().Begin(); iter != nil; iter = iter.Next() {
 		if !iter.IsIRI() {
 			continue
 		}

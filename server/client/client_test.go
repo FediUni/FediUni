@@ -80,6 +80,7 @@ func TestCreate(t *testing.T) {
 			key: []string{
 				"https://non-existent-site.com/activity/fake-create",
 				"https://non-existent-site.com/actor/fake-actor",
+				"https://non-existent-site.com/object/fake-note",
 			},
 			value: []map[string]interface{}{
 				{
@@ -87,11 +88,18 @@ func TestCreate(t *testing.T) {
 					"id":       "https://non-existent-site.com/actor/fake-create",
 					"type":     "Create",
 					"actor":    "https://non-existent-site.com/actor/fake-actor",
+					"object":   "https://non-existent-site.com/object/fake-note",
 				},
 				{
 					"@context": "https://www.w3.org/ns/activitystreams",
 					"id":       "https://non-existent-site.com/actor/fake-actor",
 					"type":     "Person",
+				},
+				{
+					"@context":     "https://www.w3.org/ns/activitystreams",
+					"id":           "https://non-existent-site.com/object/fake-note",
+					"type":         "Note",
+					"attributedTo": "https://non-existent-site.com/actor/fake-actor",
 				},
 			},
 			want: map[string]interface{}{
@@ -101,6 +109,14 @@ func TestCreate(t *testing.T) {
 				"actor": map[string]interface{}{
 					"id":   "https://non-existent-site.com/actor/fake-actor",
 					"type": "Person",
+				},
+				"object": map[string]interface{}{
+					"id":   "https://non-existent-site.com/object/fake-note",
+					"type": "Note",
+					"attributedTo": map[string]interface{}{
+						"id":   "https://non-existent-site.com/actor/fake-actor",
+						"type": "Person",
+					},
 				},
 			},
 		},
@@ -114,12 +130,17 @@ func TestCreate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to marshal value: got err=%v", err)
 		}
+		marshalledNote, err := json.Marshal(test.value[2])
+		if err != nil {
+			t.Fatalf("failed to marshal value: got err=%v", err)
+		}
 		t.Run(test.name, func(t *testing.T) {
 			client := &Client{
 				Cache: &TestCache{
 					cache: map[string][]byte{
 						test.key[0]: marshalledCreate,
 						test.key[1]: marshalledActor,
+						test.key[2]: marshalledNote,
 					},
 				},
 			}
