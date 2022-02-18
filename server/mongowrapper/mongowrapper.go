@@ -322,6 +322,9 @@ func (d *Datastore) GetActorInbox(ctx context.Context, userID string) (vocab.Act
 	activityResolver, err := streams.NewJSONResolver(func(ctx context.Context, c vocab.ActivityStreamsCreate) error {
 		orderedItems.AppendActivityStreamsCreate(c)
 		return nil
+	}, func(ctx context.Context, a vocab.ActivityStreamsAnnounce) error {
+		orderedItems.AppendActivityStreamsAnnounce(a)
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new type resolver: got err=%v", err)
