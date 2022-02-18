@@ -2,6 +2,7 @@ package actor
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -186,4 +187,19 @@ func IsIdentifier(identifier string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func ParsePerson(ctx context.Context, actor vocab.Type) (vocab.ActivityStreamsPerson, error) {
+	var person vocab.ActivityStreamsPerson
+	createResolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
+		person = p
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := createResolver.Resolve(ctx, actor); err != nil {
+		return nil, err
+	}
+	return person, nil
 }

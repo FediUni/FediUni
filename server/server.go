@@ -844,27 +844,8 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if err != nil {
 		return err
 	}
-	if create.GetActivityStreamsActor().Empty() {
-		return fmt.Errorf("failed to receive Actor in Create activity")
-	}
-	creatorID := create.GetActivityStreamsActor().Begin().GetIRI()
-	if creatorID.String() == "" {
-		return fmt.Errorf("actor ID is unspecified: got=%q", creatorID.String())
-	}
-	actor, err := s.Client.FetchRemoteObject(ctx, creatorID, false)
-	if err != nil {
-		return err
-	}
-	if actor.GetTypeName() == "Person" {
-		var person vocab.ActivityStreamsPerson
-		personResolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
-			person = p
-			return nil
-		})
-		if err = personResolver.Resolve(ctx, actor); err != nil {
-			return err
-		}
-		create.GetActivityStreamsActor().Begin().SetActivityStreamsPerson(person)
+	if err := s.Client.Create(ctx, create); err != nil {
+		return fmt.Errorf("failed to dereference Create Activity: got err=%v", err)
 	}
 	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		switch {
