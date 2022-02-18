@@ -600,6 +600,12 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to process create activity"), http.StatusInternalServerError)
 			return
 		}
+	case "Announce":
+		if err := s.handleAnnounceRequest(ctx, activityRequest, userID.String()) {
+			log.Errorf("Failed to handle Create Activity: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to process create activity"), http.StatusInternalServerError)
+			return	
+		}
 	case "Follow":
 		if err := s.handleFollowRequest(ctx, activityRequest); err != nil {
 			log.Errorf("Failed to add follower to user: got err=%v", err)
