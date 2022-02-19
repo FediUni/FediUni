@@ -579,7 +579,6 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to unmarshal request body: got err=%v", err), http.StatusBadRequest)
 		return
 	}
-	log.Infof("Incoming Request Headers=%v", r.Header)
 	var m map[string]interface{}
 	if err := json.Unmarshal(raw, &m); err != nil {
 		log.Errorf("failed to unmarshal JSON from request body: got err=%v", err)
@@ -612,16 +611,22 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to accept follower request"), http.StatusInternalServerError)
 			return
 		}
+	case "Accept":
+		if err := s.handleAccept(ctx, activityRequest); err != nil {
+			log.Errorf("Failed to handle Accept Activity: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to handle Accept activity"), http.StatusInternalServerError)
+			return
+		}
 	case "Undo":
 		if err := s.undo(ctx, activityRequest); err != nil {
 			log.Errorf("Failed to undo specified Activity: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to undo activity"), http.StatusInternalServerError)
 			return
 		}
-	case "Accept":
-		if err := s.handleAccept(ctx, activityRequest); err != nil {
-			log.Errorf("Failed to handle Accept Activity: got err=%v", err)
-			http.Error(w, fmt.Sprintf("Failed to handle Accept activity"), http.StatusInternalServerError)
+	case "Delete":
+		if err := s.delete(ctx, activityRequest); err != nil {
+			log.Errorf("Failed to delete specified object: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to delete object"), http.StatusInternalServerError)
 			return
 		}
 	default:
@@ -996,6 +1001,27 @@ func (s *Server) undo(ctx context.Context, activityRequest vocab.Type) error {
 		return fmt.Errorf("activity is unsupported in the ActivityPub specification")
 	}
 	return nil
+}
+
+// Delete can only delete/tombstone objects owned by the sending actor or server.
+// See: https://www.w3.org/TR/activitypub/#delete-activity-inbox
+func (s *Server) delete(ctx context.Context, activityRequest vocab.Type) error {
+	log.Infoln("Received Delete Activity")
+	deleteActivity, err := activity.ParseDeleteActivity(ctx, activityRequest)
+	if err != nil {
+		return fmt.Errorf("failed to parse Delete activity: got err=%v", err)
+	}
+	object := deleteActivity.GetActivityStreamsObject()
+	if object == nil {
+		return fmt.Errorf("failed to receive Object in Delete activity body: got %v", object)
+	}
+	for iter := object.Begin(); iter != nil; iter = iter.Next() {
+		switch {
+		default:
+			log.Infof("Failed to delete object=%v", iter)
+		}
+	}
+	return fmt.Errorf("Delete support is unimplemented")
 }
 
 func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) error {
