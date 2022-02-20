@@ -50,7 +50,8 @@ type Datastore interface {
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
 	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
-	GetActorInbox(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetActorInbox(context.Context, string, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
+	GetActorInboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 }
 
 type Server struct {
@@ -526,34 +527,64 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	_, claims, err := jwtauth.FromContext(ctx)
 	if err != nil {
 		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
 		return
 	}
-	rawUserID := claims["userID"]
-	var userID string
-	switch rawUserID.(type) {
-	case string:
-		userID = rawUserID.(string)
-	default:
-		log.Errorf("Invalid actor ID presented: got %v", rawUserID)
-		http.Error(w, fmt.Sprintf("failed to load userID from JWT"), http.StatusUnauthorized)
+	userID, err := parseJWTActorID(claims)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
 		return
 	}
-	orderedCollection, err := s.Datastore.GetActorInbox(ctx, userID)
+	page := r.URL.Query().Get("page")
+	if strings.ToLower(page) != "true" {
+		orderedCollection, err := s.Datastore.GetActorInboxAsOrderedCollection(ctx, userID)
+		if err != nil {
+			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
+			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+			return
+		}
+		serializedOrderedCollection, err := streams.Serialize(orderedCollection)
+		if err != nil {
+			log.Errorf("Failed to serialize Ordered Collection Inbox of Actor ID=%q: got err=%v", userID, err)
+			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+			return
+		}
+		marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
+		if err != nil {
+			log.Errorf("Failed to marshal Ordered Collection Inbox of Actor ID=%q: got err=%v", userID, err)
+			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Add("Content-Type", "application/activity+json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(marshalledOrderedCollection)
+		return
+	}
+	maxID := r.URL.Query().Get("max_id")
+	if maxID == "" {
+		maxID = "0"
+	}
+	minID := r.URL.Query().Get("min_id")
+	if minID == "" {
+		minID = "0"
+	}
+	orderedCollectionPage, err := s.Datastore.GetActorInbox(ctx, userID, fmt.Sprintf("%s/inbox", userID), minID, maxID)
 	if err != nil {
 		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
 		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 		return
 	}
-	serializedOrderedCollection, err := streams.Serialize(orderedCollection)
+	serializedOrderedCollection, err := streams.Serialize(orderedCollectionPage)
 	if err != nil {
-		log.Errorf("Failed to serialize Ordered Collection Inbox of Actor ID=%q: got err=%v", userID, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+		log.Errorf("Failed to serialize Ordered Collection Page Inbox of Actor ID=%q: got err=%v", userID, err)
+		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
 		return
 	}
 	marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
 	if err != nil {
-		log.Errorf("Failed to marshal Ordered Collection Inbox of Actor ID=%q: got err=%v", userID, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+		log.Errorf("Failed to marshal Ordered Collection Page Inbox of Actor ID=%q: got err=%v", userID, err)
+		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
@@ -1017,6 +1048,8 @@ func (s *Server) delete(ctx context.Context, activityRequest vocab.Type) error {
 	}
 	for iter := object.Begin(); iter != nil; iter = iter.Next() {
 		switch {
+		case iter.IsIRI():
+			log.Infof("Failed to delete object=%q", iter.GetIRI().String())
 		default:
 			log.Infof("Failed to delete object=%v", iter)
 		}
@@ -1169,4 +1202,13 @@ func (s *Server) generateTokenResponse(username string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to marshal JWT: got err=%v", err)
 	}
 	return marshalledToken, nil
+}
+
+func parseJWTActorID(claims map[string]interface{}) (string, error) {
+	rawUserID := claims["userID"]
+	switch rawUserID.(type) {
+	case string:
+		return rawUserID.(string), nil
+	}
+	return "", fmt.Errorf("Invalid actor ID presented: got %v", rawUserID)
 }
