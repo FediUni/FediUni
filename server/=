@@ -50,7 +50,7 @@ type Datastore interface {
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
 	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
-	GetActorInbox(context.Context, string, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
+	GetActorInbox(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	GetActorInboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 }
 
@@ -561,35 +561,15 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		w.Write(marshalledOrderedCollection)
 		return
 	}
-	maxID := r.URL.Query().Get("max_id")
+	maxID := chi.URLParam(r, "max_id")
 	if maxID == "" {
 		maxID = "0"
 	}
-	minID := r.URL.Query().Get("min_id")
+	minID := chi.URLParam(r, "min_id")
 	if minID == "" {
 		minID = "0"
 	}
-	orderedCollectionPage, err := s.Datastore.GetActorInbox(ctx, userID, fmt.Sprintf("%s/inbox", userID), minID, maxID)
-	if err != nil {
-		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-		return
-	}
-	serializedOrderedCollection, err := streams.Serialize(orderedCollectionPage)
-	if err != nil {
-		log.Errorf("Failed to serialize Ordered Collection Page Inbox of Actor ID=%q: got err=%v", userID, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
-		return
-	}
-	marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
-	if err != nil {
-		log.Errorf("Failed to marshal Ordered Collection Page Inbox of Actor ID=%q: got err=%v", userID, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Add("Content-Type", "application/activity+json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledOrderedCollection)
+	orderedCollectionPage, err := s.Datastore.GetActorInbox(ctx, userID, minID, maxID)
 }
 
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
