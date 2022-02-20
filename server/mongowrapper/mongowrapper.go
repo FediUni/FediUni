@@ -368,7 +368,6 @@ func (d *Datastore) GetActorInbox(ctx context.Context, userID, inboxURL, minID, 
 	if len(idFilters) != 0 {
 		filter["_id"] = idFilters
 	}
-	log.Infoln("Searching with Filter=%v", filter)
 	cursor, err := inbox.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
