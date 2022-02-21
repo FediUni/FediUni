@@ -115,6 +115,14 @@ func (d *TestDatastore) GetActorInboxAsOrderedCollection(context.Context, string
 	return nil, fmt.Errorf("GetActorInboxAsOrderedCollection() is unimplemented")
 }
 
+func (d *TestDatastore) GetActorOutbox(context.Context, string, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	return nil, fmt.Errorf("GetActorOutbox() is unimplemented")
+}
+
+func (d *TestDatastore) GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error) {
+	return nil, fmt.Errorf("GetActorOutboxAsOrderedCollection() is unimplemented")
+}
+
 type TestKeyGenerator struct{}
 
 func (g *TestKeyGenerator) GenerateKeyPair() (string, string, error) {

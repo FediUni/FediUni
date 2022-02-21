@@ -52,6 +52,8 @@ type Datastore interface {
 	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
 	GetActorInbox(context.Context, string, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorInboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetActorOutbox(context.Context, string, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
+	GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 }
 
 type Server struct {
@@ -167,71 +169,29 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	identifier := r.URL.Query().Get("identifier")
 	if identifier == "" {
 		log.Errorf("failed to receive identifier: got=%q", identifier)
-		http.Error(w, "failed to receive an identifier", http.StatusBadRequest)
+		http.Error(w, "Failed to receive an actor identifier", http.StatusBadRequest)
 		return
 	}
-	splitIdentifier := strings.Split(identifier, "@")
-	if len(splitIdentifier) != 3 {
-		log.Errorf("bad identifier receivied: want=%d, got=%v", 2, len(splitIdentifier))
-		http.Error(w, "failed to receive an identifier", http.StatusBadRequest)
+	actor, err := s.Client.FetchRemoteActor(ctx, identifier)
+	if err != nil {
+		log.Errorf("failed to retrieve actor: got err=%v", err)
+		http.Error(w, "Failed to load actor", http.StatusInternalServerError)
 		return
-	}
-	username := splitIdentifier[1]
-	domain := splitIdentifier[2]
-	var actor vocab.Type
-	var err error
-	if domain == s.URL.Host {
-		actor, err = s.Datastore.GetActorByUsername(r.Context(), username)
-		if err != nil {
-			log.Errorf("failed to load actorID: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", identifier), http.StatusBadRequest)
-			return
-		}
-	} else {
-		res, err := s.Client.WebfingerLookup(r.Context(), domain, username)
-		if err != nil {
-			log.Errorf("failed to lookup actor=%q, got err=%v", identifier, err)
-			http.Error(w, "failed to lookup actor", http.StatusBadRequest)
-			return
-		}
-		var webfingerResponse *client.WebfingerResponse
-		if err := json.Unmarshal(res, &webfingerResponse); err != nil {
-			log.Errorf("failed to unmarshal webfinger response: got err=%v", err)
-			http.Error(w, "failed to lookup actor", http.StatusBadRequest)
-			return
-		}
-		var actorID *url.URL
-		for _, link := range webfingerResponse.Links {
-			if !strings.Contains(link.Type, "application/activity+json") && !strings.Contains(link.Type, "application/ld+json") {
-				continue
-			}
-			if actorID, err = url.Parse(link.Href); err != nil {
-				log.Errorf("failed to load actorID: got err=%v", err)
-				http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorID), http.StatusBadRequest)
-				return
-			}
-			break
-		}
-		actor, err = s.Client.FetchRemoteObject(r.Context(), actorID, false)
-		if err != nil {
-			log.Errorf("failed to fetch remote actor: got err=%v", err)
-			http.Error(w, "failed to load actor", http.StatusBadRequest)
-			return
-		}
 	}
 	m, err := streams.Serialize(actor)
 	if err != nil {
 		log.Errorf("failed to serialize actor: got err=%v", err)
-		http.Error(w, "failed to load actor", http.StatusInternalServerError)
+		http.Error(w, "Failed to load actor", http.StatusInternalServerError)
 		return
 	}
 	marshalledActivity, err := json.Marshal(m)
 	if err != nil {
 		log.Errorf("failed to marshal actor to JSON: got err=%v", err)
-		http.Error(w, "failed to load actor", http.StatusInternalServerError)
+		http.Error(w, "Failed to load actor", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
@@ -245,15 +205,7 @@ func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to receive an actor identifier", http.StatusBadRequest)
 		return
 	}
-	splitIdentifier := strings.Split(identifier, "@")
-	if len(splitIdentifier) != 3 {
-		log.Errorf("bad identifier receivied: want=%d, got=%v", 2, len(splitIdentifier))
-		http.Error(w, "Failed to receive an actor identifier", http.StatusBadRequest)
-		return
-	}
-	username := splitIdentifier[1]
-	domain := splitIdentifier[2]
-	actor, err := s.Client.FetchRemoteActor(r.Context(), username, domain)
+	actor, err := s.Client.FetchRemoteActor(r.Context(), identifier)
 	if err != nil {
 		log.Errorf("failed to fetch a remote actor=%q: got err=%v", identifier, err)
 		http.Error(w, "Failed to load actor", http.StatusNotFound)
@@ -592,6 +544,78 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	w.Write(marshalledOrderedCollection)
 }
 
+// getActorOutbox returns activities posted by the actor as OrderedCollectionPages.
+// When the "page" query parameter is unset, an OrderedCollection is returned.
+// When the max_id or min_id is set, activities with an object ID strictly less
+// than or greater than the specified ObjectID are returned.
+func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	userID, err := s.Client.ResolveActorIdentifierToID(ctx, fmt.Sprintf("@%s@%s", username, s.URL.Host))
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	page := r.URL.Query().Get("page")
+	if strings.ToLower(page) != "true" {
+		orderedCollection, err := s.Datastore.GetActorOutboxAsOrderedCollection(ctx, username)
+		if err != nil {
+			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", username, err)
+			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+			return
+		}
+		serializedOrderedCollection, err := streams.Serialize(orderedCollection)
+		if err != nil {
+			log.Errorf("Failed to serialize Ordered Collection Inbox of Actor ID=%q: got err=%v", username, err)
+			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+			return
+		}
+		marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
+		if err != nil {
+			log.Errorf("Failed to marshal Ordered Collection Inbox of Actor ID=%q: got err=%v", username, err)
+			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Add("Content-Type", "application/activity+json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(marshalledOrderedCollection)
+		return
+	}
+	maxID := r.URL.Query().Get("max_id")
+	if maxID == "" {
+		maxID = "0"
+	}
+	minID := r.URL.Query().Get("min_id")
+	if minID == "" {
+		minID = "0"
+	}
+	orderedCollectionPage, err := s.Datastore.GetActorOutbox(ctx, userID.String(), fmt.Sprintf("%s/outbox", userID.String()), minID, maxID)
+	if err != nil {
+		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
+		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+		return
+	}
+	serializedOrderedCollection, err := streams.Serialize(orderedCollectionPage)
+	if err != nil {
+		log.Errorf("Failed to serialize Ordered Collection Page Inbox of Actor ID=%q: got err=%v", userID, err)
+		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
+		return
+	}
+	marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
+	if err != nil {
+		log.Errorf("Failed to marshal Ordered Collection Page Inbox of Actor ID=%q: got err=%v", userID, err)
+		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledOrderedCollection)
+}
+
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	username := chi.URLParam(r, "username")
@@ -712,45 +736,12 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("invalid follow request presented: expected @username@domain format"), http.StatusBadRequest)
 		return
 	}
-	split := strings.SplitN(actorToFollow, "@", 3)
-	usernameToFollow := split[1]
-	domain := split[2]
-	if username == "" || domain == "" {
-		log.Errorf("invalid follow request presented: got actorID=%v", split)
-		http.Error(w, fmt.Sprintf("invalid follow request presented: expected @username@domain format"), http.StatusBadRequest)
-		return
-	}
-	res, err := s.Client.WebfingerLookup(ctx, domain, usernameToFollow)
+	actor, err := s.Client.FetchRemoteActor(ctx, actorToFollow)
 	if err != nil {
-		log.Errorf("failed to perform Webfinger lookup: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to perform Webfinger lookup"), http.StatusInternalServerError)
+		log.Errorf("Failed to retrieve actor: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to send follow request"), http.StatusInternalServerError)
 		return
 	}
-	log.Infof("Received %q", res)
-	var webfingerResponse *client.WebfingerResponse
-	if err := json.Unmarshal(res, &webfingerResponse); err != nil {
-		log.Errorf("failed to perform Webfinger lookup: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to perform Webfinger lookup"), http.StatusInternalServerError)
-		return
-	}
-	if len(webfingerResponse.Links) == 0 {
-		log.Errorf("failed to perform Webfinger lookup: got number_of_links=%d", len(webfingerResponse.Links))
-		http.Error(w, fmt.Sprintf("failed to perform Webfinger lookup"), http.StatusInternalServerError)
-		return
-	}
-	var actorID *url.URL
-	for _, link := range webfingerResponse.Links {
-		if !strings.Contains(link.Type, "application/activity+json") && !strings.Contains(link.Type, "application/ld+json") {
-			continue
-		}
-		if actorID, err = url.Parse(link.Href); err != nil {
-			log.Errorf("failed to load actorID: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorToFollow), http.StatusBadRequest)
-			return
-		}
-		break
-	}
-	object, err := s.Client.FetchRemoteObject(ctx, actorID, false)
 	var personToFollow vocab.ActivityStreamsPerson
 	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
 		personToFollow = p
@@ -761,12 +752,8 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorToFollow), http.StatusInternalServerError)
 		return
 	}
-	if object == nil {
-		log.Errorf("failed to fetch remote object: got %v", object)
-		http.Error(w, fmt.Sprintf("failed to resolve remote actor=%q", actorToFollow), http.StatusInternalServerError)
-		return
-	}
-	if err := resolver.Resolve(ctx, object); err != nil {
+
+	if err := resolver.Resolve(ctx, actor); err != nil {
 		log.Errorf("failed to resolve actor=%q: got err=%v", actorToFollow, err)
 		http.Error(w, fmt.Sprintf("failed to retrieve actor=%q", actorToFollow), http.StatusInternalServerError)
 		return
@@ -1108,15 +1095,6 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 		return fmt.Errorf("failed to add Follower=%q to Actor=%q: got err=%v", followerID.String(), actorID.String(), err)
 	}
 	return nil
-}
-
-func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
-	actorID := chi.URLParam(r, "username")
-	if actorID == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	http.Error(w, "actor outbox lookup is unimplemented", http.StatusNotImplemented)
 }
 
 // Webfinger allow other services to query if a user on this instance.
