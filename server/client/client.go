@@ -157,15 +157,10 @@ func (c *Client) ResolveActorIdentifierToID(ctx context.Context, identifier stri
 	splitIdentifier := strings.Split(identifier, "@")
 	username := splitIdentifier[1]
 	domain := splitIdentifier[2]
-	res, err := c.WebfingerLookup(ctx, domain, username)
+	webfingerResponse, err := c.WebfingerLookup(ctx, domain, username)
 	if err != nil {
 		log.Errorf("failed to lookup actor=%q, got err=%v", fmt.Sprintf("@%s@%s", username, domain), err)
 		return nil, fmt.Errorf("failed to fetch remote actor: got err=%v", err)
-	}
-	var webfingerResponse *WebfingerResponse
-	if err := json.Unmarshal(res, &webfingerResponse); err != nil {
-		log.Errorf("failed to unmarshal webfinger response: got err=%v", err)
-		return nil, fmt.Errorf("failed to unmarshal the WebfingerResponse: got err=%v", err)
 	}
 	var actorID *url.URL
 	for _, link := range webfingerResponse.Links {
@@ -182,27 +177,10 @@ func (c *Client) ResolveActorIdentifierToID(ctx context.Context, identifier stri
 }
 
 // FetchRemoteActor performs a Webfinger lookup and returns an Actor.
-func (c *Client) FetchRemoteActor(ctx context.Context, username, domain string) (vocab.Type, error) {
-	res, err := c.WebfingerLookup(ctx, domain, username)
+func (c *Client) FetchRemoteActor(ctx context.Context, identifier string) (vocab.Type, error) {
+	actorID, err := c.ResolveActorIdentifierToID(ctx, identifier)
 	if err != nil {
-		log.Errorf("failed to lookup actor=%q, got err=%v", fmt.Sprintf("@%s@%s", username, domain), err)
-		return nil, fmt.Errorf("failed to fetch remote actor: got err=%v", err)
-	}
-	var webfingerResponse *WebfingerResponse
-	if err := json.Unmarshal(res, &webfingerResponse); err != nil {
-		log.Errorf("failed to unmarshal webfinger response: got err=%v", err)
-		return nil, fmt.Errorf("failed to unmarshal the WebfingerResponse: got err=%v", err)
-	}
-	var actorID *url.URL
-	for _, link := range webfingerResponse.Links {
-		if !strings.Contains(link.Type, "application/activity+json") && !strings.Contains(link.Type, "application/ld+json") {
-			continue
-		}
-		if actorID, err = url.Parse(link.Href); err != nil {
-			log.Errorf("failed to load actorID: got err=%v", err)
-			return nil, fmt.Errorf("failed to parse the URL from href=%q: got err=%v", link.Href, err)
-		}
-		break
+		return nil, err
 	}
 	return c.FetchRemoteObject(ctx, actorID, false)
 }
@@ -241,7 +219,7 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 	return nil
 }
 
-func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID string) ([]byte, error) {
+func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID string) (*WebfingerResponse, error) {
 	webfingerURL, err := url.Parse(fmt.Sprintf("https://%s/.well-known/webfinger?resource=%s", domain, fmt.Sprintf("acct:%s@%s", actorID, domain)))
 	if err != nil {
 		return nil, err
@@ -259,7 +237,12 @@ func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID str
 	if len(body) == 0 {
 		return nil, fmt.Errorf("received empty body: %q", string(body))
 	}
-	return body, nil
+	var webfingerResponse *WebfingerResponse
+	if err := json.Unmarshal(body, &webfingerResponse); err != nil {
+		log.Errorf("failed to unmarshal webfinger response: got err=%v", err)
+		return nil, fmt.Errorf("failed to unmarshal the WebfingerResponse: got err=%v", err)
+	}
+	return webfingerResponse, nil
 }
 
 // Create dereferences the actor and object fields of the activity.
