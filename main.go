@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/FediUni/FediUni/server"
 	"github.com/FediUni/FediUni/server/actor"
@@ -50,12 +51,15 @@ func main() {
 			log.Fatalf("failed to disconnect MongoDB client: %v", err)
 		}
 	}()
-	datastore, err := mongowrapper.NewDatastore(client, "FediUni")
+	url, err := url.Parse(instanceURL)
+	if err != nil {
+		log.Fatalf("failed to parse instanceURL=%q: got err=%v", instanceURL, err)
+	}
+	datastore, err := mongowrapper.NewDatastore(client, "FediUni", url)
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	s, err := server.New(instanceURL, datastore, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"))
+	s, err := server.New(url, datastore, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"))
 	if err != nil {
 		log.Fatalf("failed to create service: got err=%v", err)
 	}

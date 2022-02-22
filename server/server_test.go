@@ -27,10 +27,9 @@ type TestDatastore struct {
 	privateKeys map[string]string
 }
 
-func NewTestDatastore(rawURL string) *TestDatastore {
-	parsedURL, _ := url.Parse(rawURL)
+func NewTestDatastore(url *url.URL) *TestDatastore {
 	keyGenerator := actor.NewRSAKeyGenerator()
-	personGenerator := actor.NewPersonGenerator(parsedURL, keyGenerator)
+	personGenerator := actor.NewPersonGenerator(url, keyGenerator)
 	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
 	return &TestDatastore{
 		knownUsers: map[string]*user.User{},
@@ -107,7 +106,7 @@ func (d *TestDatastore) AddObjectsToActorInbox(context.Context, []vocab.Type, st
 	return fmt.Errorf("AddObjectsToActorInbox() is unimplemented")
 }
 
-func (d *TestDatastore) GetActorInbox(context.Context, string, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+func (d *TestDatastore) GetActorInbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
 	return nil, fmt.Errorf("GetActorInbox() is unimplemented")
 }
 
@@ -115,7 +114,7 @@ func (d *TestDatastore) GetActorInboxAsOrderedCollection(context.Context, string
 	return nil, fmt.Errorf("GetActorInboxAsOrderedCollection() is unimplemented")
 }
 
-func (d *TestDatastore) GetActorOutbox(context.Context, string, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+func (d *TestDatastore) GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
 	return nil, fmt.Errorf("GetActorOutbox() is unimplemented")
 }
 
@@ -138,7 +137,11 @@ func (g *TestKeyGenerator) GetPrivateKeyPEM() ([]byte, error) {
 }
 
 func TestGetActor(t *testing.T) {
-	s, _ := New("https://testserver.com", NewTestDatastore("https://testserver.com"), nil, "")
+	url, err := url.Parse("https://testserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: got err=%v", err)
+	}
+	s, _ := New(url, NewTestDatastore(url), nil, "")
 	server := httptest.NewServer(s.Router)
 	defer server.Close()
 	resp, err := http.Get(fmt.Sprintf("%s/actor/bendean", server.URL))
@@ -184,9 +187,13 @@ func TestCreateUser(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 	}
+	url, err := url.Parse("https://testserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: got err=%v", err)
+	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New("https://testserver.com", nil, &TestKeyGenerator{}, "")
+			s, _ := New(url, nil, &TestKeyGenerator{}, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			registrationURL := fmt.Sprintf("%s/api/register", server.URL)
@@ -224,9 +231,13 @@ func TestWebfingerKnownAccount(t *testing.T) {
 			},
 		},
 	}
+	url, err := url.Parse("https://testfediuni.xyz")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: got err=%v", err)
+	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New("https://testfediuni.xyz", NewTestDatastore("https://testfediuni.xyz"), nil, "")
+			s, _ := New(url, NewTestDatastore(url), nil, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -272,9 +283,13 @@ func TestWebfinger(t *testing.T) {
 			wantErrorCode: http.StatusBadRequest,
 		},
 	}
+	url, err := url.Parse("https://testserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: got err=%v", err)
+	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New("https://testfediuni.xyz", NewTestDatastore("https://testserver.com"), nil, "")
+			s, _ := New(url, NewTestDatastore(url), nil, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -304,11 +319,15 @@ func TestLogin(t *testing.T) {
 			password: "testpassword",
 		},
 	}
+	url, err := url.Parse("https://testserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: got err=%v", err)
+	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			datastore := NewTestDatastore("https://testserver.com")
+			datastore := NewTestDatastore(url)
 			secret := "thisisatestsecret"
-			s, _ := New("https://testfediuni.xyz", datastore, nil, secret)
+			s, _ := New(url, datastore, nil, secret)
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			u := &user.User{

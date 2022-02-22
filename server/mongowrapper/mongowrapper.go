@@ -11,17 +11,19 @@ import (
 	"github.com/FediUni/FediUni/server/user"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
-	log "github.com/golang/glog"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	log "github.com/golang/glog"
 )
 
 // Datastore wraps the MongoDB client and handles MongoDB operations.
 type Datastore struct {
 	client   *mongo.Client
 	database string
+	server   *url.URL
 }
 
 type followersCollection struct {
@@ -33,10 +35,11 @@ type followingCollection struct {
 }
 
 // NewDatastore returns an initialized Datastore which handles MongoDB operations.
-func NewDatastore(client *mongo.Client, database string) (*Datastore, error) {
+func NewDatastore(client *mongo.Client, database string, server *url.URL) (*Datastore, error) {
 	return &Datastore{
 		client:   client,
 		database: database,
+		server:   server,
 	}, nil
 }
 
@@ -292,13 +295,13 @@ func (d *Datastore) AddObjectsToActorInbox(ctx context.Context, objects []vocab.
 	return nil
 }
 
-func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.Type, userID string) error {
+func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.Type, username string) error {
 	inbox := d.client.Database("FediUni").Collection("inbox")
 	m, err := streams.Serialize(activity)
 	if err != nil {
 		return err
 	}
-	m["recipient"] = userID
+	m["recipient"] = username
 	res, err := inbox.InsertOne(ctx, m)
 	if err != nil {
 		return err
@@ -307,13 +310,13 @@ func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.
 	return nil
 }
 
-func (d *Datastore) GetActorOutboxAsOrderedCollection(ctx context.Context, actorID string) (vocab.ActivityStreamsOrderedCollection, error) {
+func (d *Datastore) GetActorOutboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
 	outbox := d.client.Database("FediUni").Collection("outbox")
-	filter := bson.D{{"author", actorID}}
+	filter := bson.D{{"author", username}}
 	outboxCollection := streams.NewActivityStreamsOrderedCollection()
-	outboxURL, err := url.Parse(fmt.Sprintf("%s/outbox", actorID))
+	outboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/outbox", d.server.String(), username))
 	if err != nil {
-		return nil, fmt.Errorf("failed to determine inbox ID: got err=%v", err)
+		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
 	}
 	id := streams.NewJSONLDIdProperty()
 	id.Set(outboxURL)
@@ -345,10 +348,14 @@ func (d *Datastore) GetActorOutboxAsOrderedCollection(ctx context.Context, actor
 // GetActorInbox paginates the inbox 20 activities at a time using IDs.
 // ObjectIDs exceeding that maxID are ignored, and ObjectIDs under the min ID
 // are ignored.
-func (d *Datastore) GetActorOutbox(ctx context.Context, userID, outboxURL, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
-	log.Infof("Searching for Recipient with ActorID=%q", userID)
+func (d *Datastore) GetActorOutbox(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	log.Infof("Searching for Recipient with Username=%q", username)
 	outbox := d.client.Database("FediUni").Collection("outbox")
-	filter := bson.M{"recipient": userID}
+	filter := bson.M{"recipient": username}
+	outboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/outbox", d.server.String(), username))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
+	}
 	opts := options.Find().SetSort(bson.D{{"_id", -1}}).SetLimit(20)
 	idFilters := bson.M{}
 	if minID != "0" {
@@ -406,14 +413,14 @@ func (d *Datastore) GetActorOutbox(ctx context.Context, userID, outboxURL, minID
 	totalItemsProperty.Set(totalItems)
 	page.SetActivityStreamsTotalItems(totalItemsProperty)
 	previous := streams.NewActivityStreamsPrevProperty()
-	previousURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=%s&max_id=%d", outboxURL, firstID.Hex(), 0))
+	previousURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=%s&max_id=%d", outboxURL.String(), firstID.Hex(), 0))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse previous URL: got err=%v", err)
 	}
 	previous.SetIRI(previousURL)
 	page.SetActivityStreamsPrev(previous)
 	next := streams.NewActivityStreamsNextProperty()
-	nextURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=%d&max_id=%s", outboxURL, 0, lastID.Hex()))
+	nextURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=%d&max_id=%s", outboxURL.String(), 0, lastID.Hex()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse next URL: got err=%v", err)
 
@@ -421,7 +428,7 @@ func (d *Datastore) GetActorOutbox(ctx context.Context, userID, outboxURL, minID
 	next.SetIRI(nextURL)
 	page.SetActivityStreamsNext(next)
 	outboxIRI := streams.NewJSONLDIdProperty()
-	outboxID, err := url.Parse(fmt.Sprintf("%s?page=true", outboxURL))
+	outboxID, err := url.Parse(fmt.Sprintf("%s?page=true", outboxURL.String()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse inbox ID: got err=%v", err)
 	}
@@ -430,13 +437,13 @@ func (d *Datastore) GetActorOutbox(ctx context.Context, userID, outboxURL, minID
 	return page, nil
 }
 
-func (d *Datastore) GetActorInboxAsOrderedCollection(ctx context.Context, actorID string) (vocab.ActivityStreamsOrderedCollection, error) {
+func (d *Datastore) GetActorInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
 	inbox := d.client.Database("FediUni").Collection("inbox")
-	filter := bson.D{{"recipient", actorID}}
+	filter := bson.D{{"recipient", username}}
 	inboxCollection := streams.NewActivityStreamsOrderedCollection()
-	inboxURL, err := url.Parse(fmt.Sprintf("%s/inbox", actorID))
+	inboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/inbox", d.server.String(), username))
 	if err != nil {
-		return nil, fmt.Errorf("failed to determine inbox ID: got err=%v", err)
+		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
 	}
 	id := streams.NewJSONLDIdProperty()
 	id.Set(inboxURL)
@@ -468,10 +475,14 @@ func (d *Datastore) GetActorInboxAsOrderedCollection(ctx context.Context, actorI
 // GetActorInbox paginates the inbox 20 activities at a time using IDs.
 // ObjectIDs exceeding that maxID are ignored, and ObjectIDs under the min ID
 // are ignored.
-func (d *Datastore) GetActorInbox(ctx context.Context, userID, inboxURL, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
-	log.Infof("Searching for Recipient with ActorID=%q", userID)
+func (d *Datastore) GetActorInbox(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	log.Infof("Searching for Recipient with Username=%q", username)
 	inbox := d.client.Database("FediUni").Collection("inbox")
-	filter := bson.M{"recipient": userID}
+	inboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/inbox", d.server.String(), username))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
+	}
+	filter := bson.M{"recipient": username}
 	opts := options.Find().SetSort(bson.D{{"_id", -1}}).SetLimit(20)
 	idFilters := bson.M{}
 	if minID != "0" {
@@ -529,14 +540,14 @@ func (d *Datastore) GetActorInbox(ctx context.Context, userID, inboxURL, minID, 
 	totalItemsProperty.Set(totalItems)
 	page.SetActivityStreamsTotalItems(totalItemsProperty)
 	previous := streams.NewActivityStreamsPrevProperty()
-	previousURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=%s&max_id=%d", inboxURL, firstID.Hex(), 0))
+	previousURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=%s&max_id=%d", inboxURL.String(), firstID.Hex(), 0))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse previous URL: got err=%v", err)
 	}
 	previous.SetIRI(previousURL)
 	page.SetActivityStreamsPrev(previous)
 	next := streams.NewActivityStreamsNextProperty()
-	nextURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=%d&max_id=%s", inboxURL, 0, lastID.Hex()))
+	nextURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=%d&max_id=%s", inboxURL.String(), 0, lastID.Hex()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse next URL: got err=%v", err)
 
@@ -544,7 +555,7 @@ func (d *Datastore) GetActorInbox(ctx context.Context, userID, inboxURL, minID, 
 	next.SetIRI(nextURL)
 	page.SetActivityStreamsNext(next)
 	inboxIRI := streams.NewJSONLDIdProperty()
-	inboxID, err := url.Parse(fmt.Sprintf("%s?page=true", inboxURL))
+	inboxID, err := url.Parse(fmt.Sprintf("%s?page=true", inboxURL.String()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse inbox ID: got err=%v", err)
 	}
