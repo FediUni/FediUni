@@ -50,9 +50,9 @@ type Datastore interface {
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
 	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
-	GetActorInbox(context.Context, string, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
+	GetActorInbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorInboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
-	GetActorOutbox(context.Context, string, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
+	GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 }
 
@@ -71,17 +71,13 @@ var (
 	tokenAuth *jwtauth.JWTAuth
 )
 
-func New(instanceURL string, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
-	url, err := url.Parse(instanceURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse instanceURL=%q: got err=%v", instanceURL, err)
-	}
+func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
 	tokenAuth = jwtauth.New("HS256", []byte(secret), nil)
 	s := &Server{
-		URL:          url,
+		URL:          instanceURL,
 		Datastore:    datastore,
 		KeyGenerator: keyGenerator,
-		Client:       client.NewClient(url, "redis:6379", viper.GetString("REDIS_PASSWORD")),
+		Client:       client.NewClient(instanceURL, "redis:6379", viper.GetString("REDIS_PASSWORD")),
 		Redis: redis.NewClient(&redis.Options{
 			Addr:     "redis:6379",
 			Password: viper.GetString("REDIS_PASSWORD"),
@@ -476,13 +472,7 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	_, claims, err := jwtauth.FromContext(ctx)
-	if err != nil {
-		log.Errorf("Failed to read from JWT: got err=%v", err)
-		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
-		return
-	}
-	userID, err := parseJWTActorID(claims)
+	_, _, err := jwtauth.FromContext(ctx)
 	if err != nil {
 		log.Errorf("Failed to read from JWT: got err=%v", err)
 		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
@@ -490,21 +480,21 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	}
 	page := r.URL.Query().Get("page")
 	if strings.ToLower(page) != "true" {
-		orderedCollection, err := s.Datastore.GetActorInboxAsOrderedCollection(ctx, userID)
+		orderedCollection, err := s.Datastore.GetActorInboxAsOrderedCollection(ctx, username)
 		if err != nil {
-			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
+			log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
 			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 			return
 		}
 		serializedOrderedCollection, err := streams.Serialize(orderedCollection)
 		if err != nil {
-			log.Errorf("Failed to serialize Ordered Collection Inbox of Actor ID=%q: got err=%v", userID, err)
+			log.Errorf("Failed to serialize Ordered Collection Inbox of Username=%q: got err=%v", username, err)
 			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 			return
 		}
 		marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
 		if err != nil {
-			log.Errorf("Failed to marshal Ordered Collection Inbox of Actor ID=%q: got err=%v", userID, err)
+			log.Errorf("Failed to marshal Ordered Collection Inbox of Username=%q: got err=%v", username, err)
 			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 			return
 		}
@@ -521,21 +511,21 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	if minID == "" {
 		minID = "0"
 	}
-	orderedCollectionPage, err := s.Datastore.GetActorInbox(ctx, userID, fmt.Sprintf("%s/inbox", userID), minID, maxID)
+	orderedCollectionPage, err := s.Datastore.GetActorInbox(ctx, username, minID, maxID)
 	if err != nil {
-		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
+		log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
 		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 		return
 	}
 	serializedOrderedCollection, err := streams.Serialize(orderedCollectionPage)
 	if err != nil {
-		log.Errorf("Failed to serialize Ordered Collection Page Inbox of Actor ID=%q: got err=%v", userID, err)
+		log.Errorf("Failed to serialize Ordered Collection Page Inbox of Username=%q: got err=%v", username, err)
 		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
 		return
 	}
 	marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
 	if err != nil {
-		log.Errorf("Failed to marshal Ordered Collection Page Inbox of Actor ID=%q: got err=%v", userID, err)
+		log.Errorf("Failed to marshal Ordered Collection Page Inbox of Username=%q: got err=%v", username, err)
 		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
 		return
 	}
@@ -552,11 +542,6 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	username := chi.URLParam(r, "username")
 	if username == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	userID, err := s.Client.ResolveActorIdentifierToID(ctx, fmt.Sprintf("@%s@%s", username, s.URL.Host))
-	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -593,21 +578,21 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 	if minID == "" {
 		minID = "0"
 	}
-	orderedCollectionPage, err := s.Datastore.GetActorOutbox(ctx, userID.String(), fmt.Sprintf("%s/outbox", userID.String()), minID, maxID)
+	orderedCollectionPage, err := s.Datastore.GetActorOutbox(ctx, username, minID, maxID)
 	if err != nil {
-		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", userID, err)
+		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", username, err)
 		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 		return
 	}
 	serializedOrderedCollection, err := streams.Serialize(orderedCollectionPage)
 	if err != nil {
-		log.Errorf("Failed to serialize Ordered Collection Page Inbox of Actor ID=%q: got err=%v", userID, err)
+		log.Errorf("Failed to serialize Ordered Collection Page Inbox of Actor ID=%q: got err=%v", username, err)
 		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
 		return
 	}
 	marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
 	if err != nil {
-		log.Errorf("Failed to marshal Ordered Collection Page Inbox of Actor ID=%q: got err=%v", userID, err)
+		log.Errorf("Failed to marshal Ordered Collection Page Inbox of Actor ID=%q: got err=%v", username, err)
 		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
 		return
 	}
@@ -620,11 +605,6 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	username := chi.URLParam(r, "username")
 	if username == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	userID, err := url.Parse(fmt.Sprintf("%s/actor/%s", s.URL.String(), username))
-	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -649,13 +629,13 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 	log.Infof("Determining Activity Type: got=%q", activityRequest.GetTypeName())
 	switch typeName := activityRequest.GetTypeName(); typeName {
 	case "Create":
-		if err := s.handleCreateRequest(ctx, activityRequest, userID.String()); err != nil {
+		if err := s.handleCreateRequest(ctx, activityRequest, username); err != nil {
 			log.Errorf("Failed to handle Create Activity: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to process create activity"), http.StatusInternalServerError)
 			return
 		}
 	case "Announce":
-		if err := s.handleAnnounceRequest(ctx, activityRequest, userID.String()); err != nil {
+		if err := s.handleAnnounceRequest(ctx, activityRequest, username); err != nil {
 			log.Errorf("Failed to handle Create Activity: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to process create activity"), http.StatusInternalServerError)
 			return
@@ -867,7 +847,7 @@ func (s *Server) checkFollowStatus(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
-func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.Type, receiverID string) error {
+func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.Type, username string) error {
 	log.Infoln("Received Create Activity")
 	create, err := activity.ParseCreateActivity(ctx, activityRequest)
 	if err != nil {
@@ -888,10 +868,10 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 			return fmt.Errorf("non-note activity presented")
 		}
 	}
-	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, receiverID)
+	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username)
 }
 
-func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest vocab.Type, receiverID string) error {
+func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest vocab.Type, username string) error {
 	log.Infoln("Received Announce Activity")
 	announce, err := activity.ParseAnnounceActivity(ctx, activityRequest)
 	if err != nil {
@@ -918,7 +898,7 @@ func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest voca
 			return fmt.Errorf("non-note activity presented")
 		}
 	}
-	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, receiverID)
+	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username)
 }
 
 // handleFollowRequest allows the actor to follow the requested person on this instance.
