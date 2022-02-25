@@ -107,6 +107,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
 	activitypubRouter.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	activitypubRouter.Get("/actor/{username}/outbox", s.getActorOutbox)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/actor/{username}/outbox", s.postActorOutbox)
 	activitypubRouter.Get("/actor/{username}/followers", s.getFollowers)
 	activitypubRouter.Get("/actor/{username}/following", s.getFollowing)
 	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
@@ -599,6 +600,120 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledOrderedCollection)
+}
+
+func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	userID, err := parseJWTActorID(claims)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	raw, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	object, err := streams.ToType(ctx, m)
+	if err != nil {
+		log.Errorf("failed to convert JSON to activitypub type: got err=%v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	identifier := fmt.Sprintf("@%s@%s", username, s.URL.Host)
+	person, err := s.Client.FetchRemotePerson(ctx, identifier)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("actor does not exist"), http.StatusInternalServerError)
+		return
+	}
+	switch typeName := object.GetTypeName(); typeName {
+	case "Note":
+		var note vocab.ActivityStreamsNote
+		noteResolver, err := streams.NewTypeResolver(func(ctx context.Context, n vocab.ActivityStreamsNote) error {
+			note = n
+			return nil
+		})
+		if err != nil {
+			log.Errorf("failed to create Note resolver: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to send Note"), http.StatusInternalServerError)
+			return
+		}
+		if err := noteResolver.Resolve(ctx, object); err != nil {
+			log.Errorf("failed to resolve object to note: got err=%v", err)
+			http.Error(w, fmt.Sprintf("type mismatch: object is not a note"), http.StatusBadRequest)
+			return
+		}
+		for iter := note.GetActivityStreamsAttributedTo().Begin(); iter != nil; iter = iter.Next() {
+			if !iter.IsIRI() {
+				continue
+			}
+			if iter.GetIRI().String() != userID {
+				http.Error(w, fmt.Sprintf("attributedTo mismatch in note"), http.StatusUnauthorized)
+				return
+			}
+		}
+		create := streams.NewActivityStreamsCreate()
+		object := streams.NewActivityStreamsObjectProperty()
+		object.AppendActivityStreamsNote(note)
+		create.SetActivityStreamsObject(object)
+		actor := streams.NewActivityStreamsActorProperty()
+		actor.AppendActivityStreamsPerson(person)
+		create.SetActivityStreamsActor(actor)
+		create.SetActivityStreamsPublished(note.GetActivityStreamsPublished())
+		create.SetActivityStreamsTo(note.GetActivityStreamsTo())
+		create.SetActivityStreamsCc(note.GetActivityStreamsCc())
+		followers, err := s.Client.FetchFollowers(ctx, identifier)
+		if err != nil {
+			log.Errorf("failed to fetch followers: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to post messages"), http.StatusInternalServerError)
+			return
+		}
+		var inboxes []*url.URL
+		for _, follower := range followers {
+			inboxes = append(inboxes, follower.GetActivityStreamsInbox().GetIRI())
+		}
+		privateKey, err := s.readPrivateKey(username)
+		if err != nil {
+			log.Errorf("failed to read private key: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
+			return
+		}
+		if person.GetW3IDSecurityV1PublicKey().Empty() {
+			log.Errorf("failed to get public key ID: got=%v", person.GetW3IDSecurityV1PublicKey())
+			http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
+			return
+		}
+		publicKeyID := person.GetW3IDSecurityV1PublicKey().Begin().Get().GetJSONLDId().Get().String()
+		for _, inbox := range inboxes {
+			if err := s.Client.PostToInbox(ctx, inbox, create, publicKeyID, privateKey); err != nil {
+				log.Errorf("failed to post to inbox: got err=%v", err)
+				http.Error(w, fmt.Sprintf("failed to send Note request"), http.StatusInternalServerError)
+				return
+			}
+		}
+	case "Image":
+		http.Error(w, fmt.Sprintf("support for Image is unimplemented"), http.StatusNotImplemented)
+		return
+	default:
+		http.Error(w, fmt.Sprintf("unsupported type received"), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
@@ -1169,4 +1284,13 @@ func parseJWTActorID(claims map[string]interface{}) (string, error) {
 		return rawUserID.(string), nil
 	}
 	return "", fmt.Errorf("Invalid actor ID presented: got %v", rawUserID)
+}
+
+func parseJWTUsername(claims map[string]interface{}) (string, error) {
+	rawUserID := claims["username"]
+	switch rawUserID.(type) {
+	case string:
+		return rawUserID.(string), nil
+	}
+	return "", fmt.Errorf("Invalid actor name presented: got %v", rawUserID)
 }

@@ -176,6 +176,30 @@ func (c *Client) ResolveActorIdentifierToID(ctx context.Context, identifier stri
 	return actorID, nil
 }
 
+// FetchRemotePerson performs a Webfinger lookup and returns a Person.
+func (c *Client) FetchRemotePerson(ctx context.Context, identifier string) (vocab.ActivityStreamsPerson, error) {
+	actorID, err := c.ResolveActorIdentifierToID(ctx, identifier)
+	if err != nil {
+		return nil, err
+	}
+	actor, err := c.FetchRemoteObject(ctx, actorID, false)
+	if err != nil {
+		return nil, err
+	}
+	var person vocab.ActivityStreamsPerson
+	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
+		person = p
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := resolver.Resolve(ctx, actor); err != nil {
+		return nil, err
+	}
+	return person, err
+}
+
 // FetchRemoteActor performs a Webfinger lookup and returns an Actor.
 func (c *Client) FetchRemoteActor(ctx context.Context, identifier string) (vocab.Type, error) {
 	actorID, err := c.ResolveActorIdentifierToID(ctx, identifier)
@@ -183,6 +207,59 @@ func (c *Client) FetchRemoteActor(ctx context.Context, identifier string) (vocab
 		return nil, err
 	}
 	return c.FetchRemoteObject(ctx, actorID, false)
+}
+
+func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab.ActivityStreamsPerson, error) {
+	person, err := c.FetchRemotePerson(ctx, identifier)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch remote person=%q: got err=%v", identifier, err)
+	}
+	var followers vocab.Type
+	switch f := person.GetActivityStreamsFollowers(); {
+	case f.IsIRI():
+		followers, err = c.FetchRemoteObject(ctx, f.GetIRI(), false)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unexpected type of Followers field: got type=%q", f.GetType())
+	}
+	var orderedCollection vocab.ActivityStreamsOrderedCollection
+	resolver, err := streams.NewTypeResolver(func(ctx context.Context, c vocab.ActivityStreamsOrderedCollection) error {
+		orderedCollection = c
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := resolver.Resolve(ctx, followers); err != nil {
+		return nil, err
+	}
+	var dereferencedFollowers []vocab.ActivityStreamsPerson
+	resolver, err = streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
+		dereferencedFollowers = append(dereferencedFollowers, p)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create person resolver: got err=%v", err)
+	}
+	for iter := orderedCollection.GetActivityStreamsOrderedItems().Begin(); iter != nil; iter = iter.Next() {
+		switch {
+		case iter.IsIRI():
+			object, err := c.FetchRemoteObject(ctx, iter.GetIRI(), false)
+			if err != nil {
+				log.Errorf("failed to fetch remote object: got err=%v", err)
+			}
+			if err := resolver.Resolve(ctx, object); err != nil {
+				log.Errorf("failed to resolve remote object: got err=%v", err)
+			}
+		case iter.IsActivityStreamsPerson():
+			dereferencedFollowers = append(dereferencedFollowers, iter.GetActivityStreamsPerson())
+		default:
+			log.Infof("ignoring follower of type=%q", iter.GetType())
+		}
+	}
+	return dereferencedFollowers, nil
 }
 
 func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.Type, keyID string, privateKey *rsa.PrivateKey) error {
