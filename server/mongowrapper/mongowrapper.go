@@ -178,14 +178,13 @@ func (d *Datastore) GetUserByUsername(ctx context.Context, username string) (*us
 	return user, nil
 }
 
-func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab.Type, baseURL string) error {
+func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab.Type, objectID primitive.ObjectID) error {
 	activities := d.client.Database("FediUni").Collection("activities")
-	objectID := primitive.NewObjectID()
-	id, err := url.Parse(fmt.Sprintf("%s/activity/%s", baseURL, objectID.Hex()))
-	if err != nil {
-		return err
-	}
 	if activity.GetJSONLDId() == nil {
+		id, err := url.Parse(fmt.Sprintf("%s/activity/%s", d.server.String(), objectID.Hex()))
+		if err != nil {
+			return err
+		}
 		idProperty := streams.NewJSONLDIdProperty()
 		idProperty.Set(id)
 		activity.SetJSONLDId(idProperty)
@@ -199,7 +198,7 @@ func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab
 	if err != nil {
 		return err
 	}
-	log.Infof("Inserted activity %q with _id=%q", id.String(), res.InsertedID)
+	log.Infof("Inserted activity with _id=%q", res.InsertedID)
 	return nil
 }
 
@@ -248,12 +247,11 @@ func (d *Datastore) AddActivityToOutbox(ctx context.Context, activity vocab.Type
 		return err
 	}
 	m["sender"] = username
-
 	res, err := outbox.InsertOne(ctx, m)
 	if err != nil {
 		return err
 	}
-	log.Infof("Inserted activity %q with _id=%q", id.String(), res.InsertedID)
+	log.Infof("Inserted activity with _id=%q", res.InsertedID)
 	return nil
 }
 

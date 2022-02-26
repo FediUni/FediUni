@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/jwtauth"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/FediUni/FediUni/server/actor"
 	"github.com/FediUni/FediUni/server/client"
@@ -62,7 +63,7 @@ func (d *TestDatastore) CreateUser(_ context.Context, user *user.User) error {
 	return nil
 }
 
-func (d *TestDatastore) AddActivityToSharedInbox(_ context.Context, _ vocab.Type, _ string) error {
+func (d *TestDatastore) AddActivityToSharedInbox(_ context.Context, _ vocab.Type, _ primitive.ObjectID) error {
 	return fmt.Errorf("AddActivityToSharedInbox() is unimplemented")
 }
 

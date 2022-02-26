@@ -45,7 +45,7 @@ type Datastore interface {
 	CreateUser(context.Context, *user.User) error
 	GetUserByUsername(context.Context, string) (*user.User, error)
 	AddActivityToActorInbox(context.Context, vocab.Type, string) error
-	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
+	AddActivityToSharedInbox(context.Context, vocab.Type, primitive.ObjectID) error
 	AddActivityToOutbox(context.Context, vocab.Type, string) error
 	AddFollowerToActor(context.Context, string, string) error
 	AddActorToFollows(context.Context, string, string) error
@@ -691,9 +691,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		create.SetActivityStreamsPublished(note.GetActivityStreamsPublished())
 		create.SetActivityStreamsTo(note.GetActivityStreamsTo())
 		create.SetActivityStreamsCc(note.GetActivityStreamsCc())
-
-		create.SetJSONLDId(idProperty)
-		if err := s.Datastore.AddActivityToSharedInbox(ctx, create, username); err != nil {
+		if err := s.Datastore.AddActivityToSharedInbox(ctx, create, objectID); err != nil {
 			log.Errorf("failed to add activities to datastore: got err=%v", err)
 			http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
 			return
@@ -817,7 +815,7 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to process activityRequest", http.StatusInternalServerError)
 		return
 	}
-	if err := s.Datastore.AddActivityToSharedInbox(r.Context(), activityRequest, s.URL.String()); err != nil {
+	if err := s.Datastore.AddActivityToSharedInbox(r.Context(), activityRequest, primitive.NewObjectID()); err != nil {
 		log.Errorf("failed to add to inbox: got err=%v", err)
 		http.Error(w, "failed to add to inbox", http.StatusInternalServerError)
 		return
@@ -906,7 +904,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	objectProperty := streams.NewActivityStreamsObjectProperty()
 	objectProperty.AppendActivityStreamsPerson(personToFollow)
 	followActivity.SetActivityStreamsObject(objectProperty)
-	if err := s.Datastore.AddActivityToSharedInbox(ctx, followActivity, s.URL.String()); err != nil {
+	if err := s.Datastore.AddActivityToSharedInbox(ctx, followActivity, primitive.NewObjectID()); err != nil {
 		log.Errorf("Failed to add Follow Activity to Datastore: got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
 		return
@@ -1073,7 +1071,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err != nil {
 		return fmt.Errorf("failed to load person: got err=%v", err)
 	}
-	if err := s.Datastore.AddActivityToSharedInbox(ctx, accept, s.URL.String()); err != nil {
+	if err := s.Datastore.AddActivityToSharedInbox(ctx, accept, primitive.NewObjectID()); err != nil {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
 	object, err := s.Client.FetchRemoteObject(ctx, followerID, false)
