@@ -43,8 +43,9 @@ type Datastore interface {
 	GetFollowerStatus(context.Context, string, string) (int, error)
 	CreateUser(context.Context, *user.User) error
 	GetUserByUsername(context.Context, string) (*user.User, error)
-	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
 	AddActivityToActorInbox(context.Context, vocab.Type, string) error
+	AddActivityToSharedInbox(context.Context, vocab.Type, string) error
+	AddActivityToOutbox(context.Context, vocab.Type, string) error
 	AddFollowerToActor(context.Context, string, string) error
 	AddActorToFollows(context.Context, string, string) error
 	RemoveFollowerFromActor(context.Context, string, string) error
@@ -678,6 +679,16 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		create.SetActivityStreamsPublished(note.GetActivityStreamsPublished())
 		create.SetActivityStreamsTo(note.GetActivityStreamsTo())
 		create.SetActivityStreamsCc(note.GetActivityStreamsCc())
+		if err := s.Datastore.AddActivityToSharedInbox(ctx, create, username); err != nil {
+			log.Errorf("failed to add activities to datastore: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
+			return
+		}
+		if err := s.Datastore.AddActivityToOutbox(ctx, create, username); err != nil {
+			log.Errorf("failed to add activities to datastore: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
+			return
+		}
 		followers, err := s.Client.FetchFollowers(ctx, identifier)
 		if err != nil {
 			log.Errorf("failed to fetch followers: got err=%v", err)

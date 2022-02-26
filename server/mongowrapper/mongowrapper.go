@@ -241,6 +241,29 @@ func (d *Datastore) GetActivityByActivityID(ctx context.Context, activityID stri
 	return activity, nil
 }
 
+func (d *Datastore) AddActivityToOutbox(ctx context.Context, activity vocab.Type, username string) error {
+	outbox := d.client.Database("FediUni").Collection("outbox")
+	m, err := streams.Serialize(activity)
+	if err != nil {
+		return err
+	}
+	m["sender"] = username
+	objectID := primitive.NewObjectID()
+	id, err := url.Parse(fmt.Sprintf("%s/activity/%s", d.server.String(), objectID.Hex()))
+	if err != nil {
+		return err
+	}
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	activity.SetJSONLDId(idProperty)
+	res, err := outbox.InsertOne(ctx, m)
+	if err != nil {
+		return err
+	}
+	log.Infof("Inserted activity %q with _id=%q", id.String(), res.InsertedID)
+	return nil
+}
+
 // AddFollowerToActor adds the Follower ID to the Actor ID.
 func (d *Datastore) AddFollowerToActor(ctx context.Context, actorID, followerID string) error {
 	log.Infof("Adding Follower=%q to Actor=%q", followerID, actorID)
