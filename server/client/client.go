@@ -259,6 +259,7 @@ func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab
 			log.Infof("ignoring follower of type=%q", iter.GetType())
 		}
 	}
+	log.Infof("Loaded %d followers from %q", len(dereferencedFollowers), identifier)
 	return dereferencedFollowers, nil
 }
 

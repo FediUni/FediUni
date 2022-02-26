@@ -733,9 +733,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		publicKeyID := person.GetW3IDSecurityV1PublicKey().Begin().Get().GetJSONLDId().Get().String()
 		for _, inbox := range inboxes {
 			if err := s.Client.PostToInbox(ctx, inbox, create, publicKeyID, privateKey); err != nil {
-				log.Errorf("failed to post to inbox: got err=%v", err)
-				http.Error(w, fmt.Sprintf("failed to send Note request"), http.StatusInternalServerError)
-				return
+				log.Errorf("failed to post to inbox=%q: got err=%v", inbox.String(), err)
 			}
 		}
 	case "Image":
