@@ -709,15 +709,15 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		}
 		var inboxes []*url.URL
 		for _, follower := range followers {
-			inbox := follower.GetActivityStreamsInbox()
-			if inbox == nil {
+			switch inbox := follower.GetActivityStreamsInbox(); {
+			case inbox == nil:
+				log.Infof("Inbox of Actor=%q is unset: got %v", inbox)
 				continue
+			case inbox.IsIRI():
+				inboxes = append(inboxes, inbox.GetIRI())
+			default:
+				log.Infof("Unexpected value in inbox: got=%v", inbox)
 			}
-			inboxURL := inbox.GetIRI()
-			if inboxURL == nil {
-				continue
-			}
-			inboxes = append(inboxes, inboxURL)
 		}
 		privateKey, err := s.readPrivateKey(username)
 		if err != nil {
@@ -743,6 +743,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("unsupported type received"), http.StatusInternalServerError)
 		return
 	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
