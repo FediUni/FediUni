@@ -711,7 +711,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		for _, follower := range followers {
 			switch inbox := follower.GetActivityStreamsInbox(); {
 			case inbox == nil:
-				log.Infof("Inbox of Actor=%q is unset: got %v", inbox)
+				log.Infof("Inbox of Actor=%q is unset: got %v", follower.GetJSONLDId().Get(), inbox)
 				continue
 			case inbox.IsIRI():
 				inboxes = append(inboxes, inbox.GetIRI())
