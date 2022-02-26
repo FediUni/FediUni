@@ -31,6 +31,7 @@ import (
 	log "github.com/golang/glog"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/spf13/viper"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -669,7 +670,18 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		objectID := primitive.NewObjectID()
+		id, err := url.Parse(fmt.Sprintf("%s/activity/%s", s.URL.String(), objectID.Hex()))
+		if err != nil {
+			log.Errorf("failed to add activities to datastore: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
+			return
+		}
+		idProperty := streams.NewJSONLDIdProperty()
+		idProperty.Set(id)
 		create := streams.NewActivityStreamsCreate()
+		create.SetJSONLDId(idProperty)
+		note.SetJSONLDId(idProperty)
 		object := streams.NewActivityStreamsObjectProperty()
 		object.AppendActivityStreamsNote(note)
 		create.SetActivityStreamsObject(object)
@@ -679,6 +691,8 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		create.SetActivityStreamsPublished(note.GetActivityStreamsPublished())
 		create.SetActivityStreamsTo(note.GetActivityStreamsTo())
 		create.SetActivityStreamsCc(note.GetActivityStreamsCc())
+
+		create.SetJSONLDId(idProperty)
 		if err := s.Datastore.AddActivityToSharedInbox(ctx, create, username); err != nil {
 			log.Errorf("failed to add activities to datastore: got err=%v", err)
 			http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)

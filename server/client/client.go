@@ -263,7 +263,6 @@ func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab
 }
 
 func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.Type, keyID string, privateKey *rsa.PrivateKey) error {
-	log.Infof("Marshalling Activity...")
 	marshalledActivity, err := activity.JSON(object)
 	if err != nil {
 		return err

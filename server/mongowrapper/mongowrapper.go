@@ -248,14 +248,7 @@ func (d *Datastore) AddActivityToOutbox(ctx context.Context, activity vocab.Type
 		return err
 	}
 	m["sender"] = username
-	objectID := primitive.NewObjectID()
-	id, err := url.Parse(fmt.Sprintf("%s/activity/%s", d.server.String(), objectID.Hex()))
-	if err != nil {
-		return err
-	}
-	idProperty := streams.NewJSONLDIdProperty()
-	idProperty.Set(id)
-	activity.SetJSONLDId(idProperty)
+
 	res, err := outbox.InsertOne(ctx, m)
 	if err != nil {
 		return err
