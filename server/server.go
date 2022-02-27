@@ -714,6 +714,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 				log.Infof("Inbox of Actor=%q is unset: got %v", follower.GetJSONLDId().Get(), inbox)
 				continue
 			case inbox.IsIRI():
+				log.Infof("Appending %q to list of inboxes", inbox.GetIRI().String())
 				inboxes = append(inboxes, inbox.GetIRI())
 			default:
 				log.Infof("Unexpected value in inbox: got=%v", inbox)
@@ -732,6 +733,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		}
 		publicKeyID := person.GetW3IDSecurityV1PublicKey().Begin().Get().GetJSONLDId().Get().String()
 		for _, inbox := range inboxes {
+			log.Infof("Posting Create Activity to Inbox=%q", inbox.String())
 			if err := s.Client.PostToInbox(ctx, inbox, create, publicKeyID, privateKey); err != nil {
 				log.Errorf("failed to post to inbox=%q: got err=%v", inbox.String(), err)
 			}
