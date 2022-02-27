@@ -253,10 +253,12 @@ func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab
 			if err := resolver.Resolve(ctx, object); err != nil {
 				log.Errorf("failed to resolve remote object: got err=%v", err)
 			}
+			log.Infof("Appended Person=%v", object)
 		case iter.IsActivityStreamsPerson():
 			dereferencedFollowers = append(dereferencedFollowers, iter.GetActivityStreamsPerson())
+			log.Infof("Appended Person=%v", iter.GetActivityStreamsPerson())
 		default:
-			log.Infof("ignoring follower of type=%q", iter.GetType())
+			log.Infof("Ignoring follower of type=%q", iter.GetType())
 		}
 	}
 	log.Infof("Loaded %d followers from %q", len(dereferencedFollowers), identifier)
