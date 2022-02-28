@@ -255,20 +255,8 @@ func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab
 				log.Errorf("failed to resolve remote object: got err=%v", err)
 				continue
 			}
-			m, err := streams.Serialize(o)
-			if err != nil {
-				log.Errorf("failed to serialize object")
-				continue
-			}
-			log.Infof("Appended Person=%v", m)
 		case iter.IsActivityStreamsPerson():
 			dereferencedFollowers = append(dereferencedFollowers, iter.GetActivityStreamsPerson())
-			m, err := streams.Serialize(iter.GetActivityStreamsPerson())
-			if err != nil {
-				log.Errorf("failed to serialize object")
-				continue
-			}
-			log.Infof("Appended Person=%v", m)
 		default:
 			log.Infof("Ignoring follower of type=%q", iter.GetType())
 		}

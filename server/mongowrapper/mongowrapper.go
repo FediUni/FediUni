@@ -84,11 +84,7 @@ func (d *Datastore) GetFollowersByUsername(ctx context.Context, username string)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse %q as URL: got err=%v", follower, err)
 		}
-		p := streams.NewActivityStreamsPerson()
-		idProperty := streams.NewJSONLDIdProperty()
-		idProperty.Set(followerID)
-		p.SetJSONLDId(idProperty)
-		orderedFollowers.AppendActivityStreamsPerson(p)
+		orderedFollowers.AppendIRI(followerID)
 	}
 	followers.SetActivityStreamsOrderedItems(orderedFollowers)
 	return followers, nil
