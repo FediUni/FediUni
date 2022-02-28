@@ -246,17 +246,29 @@ func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab
 	for iter := orderedCollection.GetActivityStreamsOrderedItems().Begin(); iter != nil; iter = iter.Next() {
 		switch {
 		case iter.IsIRI():
-			object, err := c.FetchRemoteObject(ctx, iter.GetIRI(), false)
+			o, err := c.FetchRemoteObject(ctx, iter.GetIRI(), false)
 			if err != nil {
 				log.Errorf("failed to fetch remote object: got err=%v", err)
+				continue
 			}
-			if err := resolver.Resolve(ctx, object); err != nil {
+			if err := resolver.Resolve(ctx, o); err != nil {
 				log.Errorf("failed to resolve remote object: got err=%v", err)
+				continue
 			}
-			log.Infof("Appended Person=%v", object)
+			m, err := streams.Serialize(o)
+			if err != nil {
+				log.Errorf("failed to serialize object")
+				continue
+			}
+			log.Infof("Appended Person=%v", m)
 		case iter.IsActivityStreamsPerson():
 			dereferencedFollowers = append(dereferencedFollowers, iter.GetActivityStreamsPerson())
-			log.Infof("Appended Person=%v", iter.GetActivityStreamsPerson())
+			m, err := streams.Serialize(iter.GetActivityStreamsPerson())
+			if err != nil {
+				log.Errorf("failed to serialize object")
+				continue
+			}
+			log.Infof("Appended Person=%v", m)
 		default:
 			log.Infof("Ignoring follower of type=%q", iter.GetType())
 		}
