@@ -174,7 +174,7 @@ func (d *Datastore) GetUserByUsername(ctx context.Context, username string) (*us
 	return user, nil
 }
 
-func (d *Datastore) AddActivityToSharedInbox(ctx context.Context, activity vocab.Type, objectID primitive.ObjectID) error {
+func (d *Datastore) AddActivityToPublicInbox(ctx context.Context, activity vocab.Type, objectID primitive.ObjectID) error {
 	activities := d.client.Database("FediUni").Collection("activities")
 	if activity.GetJSONLDId() == nil {
 		id, err := url.Parse(fmt.Sprintf("%s/activity/%s", d.server.String(), objectID.Hex()))
@@ -305,13 +305,16 @@ func (d *Datastore) AddObjectsToActorInbox(ctx context.Context, objects []vocab.
 	return nil
 }
 
-func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.Type, username string) error {
+func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.Type, username string, isReply bool) error {
 	inbox := d.client.Database("FediUni").Collection("inbox")
 	m, err := streams.Serialize(activity)
 	if err != nil {
 		return err
 	}
 	m["recipient"] = username
+	m["isReply"] = isReply
+	// If the hostname matches the activity was created locally.
+	m["isLocal"] = activity.GetJSONLDId().Get().Host == d.server.Host
 	res, err := inbox.InsertOne(ctx, m)
 	if err != nil {
 		return err

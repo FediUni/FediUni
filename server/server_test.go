@@ -63,11 +63,11 @@ func (d *TestDatastore) CreateUser(_ context.Context, user *user.User) error {
 	return nil
 }
 
-func (d *TestDatastore) AddActivityToSharedInbox(_ context.Context, _ vocab.Type, _ primitive.ObjectID) error {
-	return fmt.Errorf("AddActivityToSharedInbox() is unimplemented")
+func (d *TestDatastore) AddActivityToPublicInbox(_ context.Context, _ vocab.Type, _ primitive.ObjectID) error {
+	return fmt.Errorf("AddActivityToPublicInbox() is unimplemented")
 }
 
-func (d *TestDatastore) AddActivityToActorInbox(context.Context, vocab.Type, string) error {
+func (d *TestDatastore) AddActivityToActorInbox(context.Context, vocab.Type, string, bool) error {
 	return fmt.Errorf("AddActivityToActorInbox() is unimplemented")
 }
 
