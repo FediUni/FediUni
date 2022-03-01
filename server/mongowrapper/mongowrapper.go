@@ -319,7 +319,7 @@ func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.
 	if err != nil {
 		return err
 	}
-	log.Infof("Inserted Activity: got=%v", res)
+	log.Infof("Inserted Activity=%v: got=%v", m, res)
 	return nil
 }
 
