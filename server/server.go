@@ -815,7 +815,10 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 				log.Errorf("failed to post to inbox=%q: got err=%v", inbox.String(), err)
 			}
 		}
-		isReply := note.GetActivityStreamsInReplyTo() != nil || note.GetActivityStreamsInReplyTo().Len() > 0
+		isReply := false
+		if note.GetActivityStreamsInReplyTo() != nil && note.GetActivityStreamsInReplyTo().Len() > 0 {
+			isReply = true
+		}
 		for iter := create.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
 			if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
 				if err := s.Datastore.AddActivityToPublicInbox(ctx, create, primitive.NewObjectID(), isReply); err != nil {
