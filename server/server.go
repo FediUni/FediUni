@@ -45,7 +45,7 @@ type Datastore interface {
 	CreateUser(context.Context, *user.User) error
 	GetUserByUsername(context.Context, string) (*user.User, error)
 	AddActivityToActorInbox(context.Context, vocab.Type, string, bool) error
-	AddActivityToPublicInbox(context.Context, vocab.Type, primitive.ObjectID) error
+	AddActivityToPublicInbox(context.Context, vocab.Type, primitive.ObjectID, bool) error
 	AddActivityToOutbox(context.Context, vocab.Type, string) error
 	AddFollowerToActor(context.Context, string, string) error
 	AddActorToFollows(context.Context, string, string) error
@@ -56,6 +56,8 @@ type Datastore interface {
 	GetActorInboxAsOrderedCollection(context.Context, string, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetPublicInbox(context.Context, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
+	GetPublicInboxAsOrderedCollection(context.Context, bool) (vocab.ActivityStreamsOrderedCollection, error)
 }
 
 type Server struct {
@@ -106,6 +108,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	activitypubRouter.Get("/actor", s.getAnyActor)
 	activitypubRouter.Get("/actor/{username}", s.getActor)
 	activitypubRouter.Get("/actor/outbox", s.getAnyActorOutbox)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/inbox", s.getActorInbox)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
 	activitypubRouter.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	activitypubRouter.Get("/actor/{username}/outbox", s.getActorOutbox)
@@ -468,6 +471,74 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
+func (s *Server) getPublicInbox(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, _, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
+	page := r.URL.Query().Get("page")
+	var local bool
+	if l := r.URL.Query().Get("local"); strings.ToLower(l) == "true" {
+		local = true
+	}
+	if strings.ToLower(page) != "true" {
+		orderedCollection, err := s.Datastore.GetPublicInboxAsOrderedCollection(ctx, local)
+		if err != nil {
+			log.Errorf("Failed to read from Public Inbox: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
+			return
+		}
+		serializedOrderedCollection, err := streams.Serialize(orderedCollection)
+		if err != nil {
+			log.Errorf("Failed to serialize Ordered Collection of Public Inbox: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
+			return
+		}
+		marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
+		if err != nil {
+			log.Errorf("Failed to marshal Ordered Collection of Public Inbox: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Add("Content-Type", "application/activity+json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(marshalledOrderedCollection)
+		return
+	}
+	maxID := r.URL.Query().Get("max_id")
+	if maxID == "" {
+		maxID = "0"
+	}
+	minID := r.URL.Query().Get("min_id")
+	if minID == "" {
+		minID = "0"
+	}
+	orderedCollectionPage, err := s.Datastore.GetPublicInbox(ctx, minID, maxID, local)
+	if err != nil {
+		log.Errorf("Failed to read from Public Inbox: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
+		return
+	}
+	serializedOrderedCollection, err := streams.Serialize(orderedCollectionPage)
+	if err != nil {
+		log.Errorf("Failed to serialize Ordered Collection Page of Public Inbox: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to load public inbox page"), http.StatusInternalServerError)
+		return
+	}
+	marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
+	if err != nil {
+		log.Errorf("Failed to marshal Ordered Collection Page of Public Inbox: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to load public inbox page"), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledOrderedCollection)
+}
+
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	username := chi.URLParam(r, "username")
@@ -695,7 +766,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		create.SetActivityStreamsPublished(note.GetActivityStreamsPublished())
 		create.SetActivityStreamsTo(note.GetActivityStreamsTo())
 		create.SetActivityStreamsCc(note.GetActivityStreamsCc())
-		if err := s.Datastore.AddActivityToPublicInbox(ctx, create, objectID); err != nil {
+		if err := s.Datastore.AddActivityToPublicInbox(ctx, create, objectID, false); err != nil {
 			log.Errorf("failed to add activities to datastore: got err=%v", err)
 			http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
 			return
@@ -820,11 +891,6 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to process activityRequest", http.StatusInternalServerError)
 		return
 	}
-	if err := s.Datastore.AddActivityToPublicInbox(r.Context(), activityRequest, primitive.NewObjectID()); err != nil {
-		log.Errorf("failed to add to inbox: got err=%v", err)
-		http.Error(w, "failed to add to inbox", http.StatusInternalServerError)
-		return
-	}
 	w.WriteHeader(200)
 }
 
@@ -909,7 +975,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	objectProperty := streams.NewActivityStreamsObjectProperty()
 	objectProperty.AppendActivityStreamsPerson(personToFollow)
 	followActivity.SetActivityStreamsObject(objectProperty)
-	if err := s.Datastore.AddActivityToPublicInbox(ctx, followActivity, primitive.NewObjectID()); err != nil {
+	if err := s.Datastore.AddActivityToPublicInbox(ctx, followActivity, primitive.NewObjectID(), false); err != nil {
 		log.Errorf("Failed to add Follow Activity to Datastore: got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
 		return
@@ -1024,7 +1090,15 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 			return fmt.Errorf("non-note activity presented")
 		}
 	}
-	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username, isReply)
+	if err := s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username, isReply); err != nil {
+		return fmt.Errorf("failed to add to actor inbox: got err=%v", err)
+	}
+	for iter := create.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
+		if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
+			return s.Datastore.AddActivityToPublicInbox(ctx, activityRequest, primitive.NewObjectID(), isReply)
+		}
+	}
+	return nil
 }
 
 func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest vocab.Type, username string) error {
@@ -1081,7 +1155,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err != nil {
 		return fmt.Errorf("failed to load person: got err=%v", err)
 	}
-	if err := s.Datastore.AddActivityToPublicInbox(ctx, accept, primitive.NewObjectID()); err != nil {
+	if err := s.Datastore.AddActivityToPublicInbox(ctx, accept, primitive.NewObjectID(), false); err != nil {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
 	object, err := s.Client.FetchRemoteObject(ctx, followerID, false)

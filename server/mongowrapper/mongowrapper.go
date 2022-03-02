@@ -174,8 +174,8 @@ func (d *Datastore) GetUserByUsername(ctx context.Context, username string) (*us
 	return user, nil
 }
 
-func (d *Datastore) AddActivityToPublicInbox(ctx context.Context, activity vocab.Type, objectID primitive.ObjectID) error {
-	activities := d.client.Database("FediUni").Collection("activities")
+func (d *Datastore) AddActivityToPublicInbox(ctx context.Context, activity vocab.Type, objectID primitive.ObjectID, isReply bool) error {
+	activities := d.client.Database("FediUni").Collection("publicInbox")
 	if activity.GetJSONLDId() == nil {
 		id, err := url.Parse(fmt.Sprintf("%s/activity/%s", d.server.String(), objectID.Hex()))
 		if err != nil {
@@ -190,12 +190,149 @@ func (d *Datastore) AddActivityToPublicInbox(ctx context.Context, activity vocab
 		return err
 	}
 	marshalledActivity["_id"] = objectID
+	marshalledActivity["isReply"] = isReply
+	// If the hostname matches the activity was created locally.
+	marshalledActivity["isLocal"] = activity.GetJSONLDId().Get().Host == d.server.Host
 	res, err := activities.InsertOne(ctx, marshalledActivity)
 	if err != nil {
 		return err
 	}
 	log.Infof("Inserted activity with _id=%q", res.InsertedID)
 	return nil
+}
+
+// GetPublicInboxAsOrderedCollection returns an orderedCollection.
+// This collection is used to traverse the publicInbox collection in Mongo.
+func (d *Datastore) GetPublicInboxAsOrderedCollection(ctx context.Context, local bool) (vocab.ActivityStreamsOrderedCollection, error) {
+	inbox := d.client.Database("FediUni").Collection("publicInbox")
+	filter := bson.D{
+		{"isLocal", local},
+		{"isReply", false},
+	}
+	inboxCollection := streams.NewActivityStreamsOrderedCollection()
+	inboxURL, err := url.Parse(fmt.Sprintf("%s/inbox", d.server.String()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
+	}
+	id := streams.NewJSONLDIdProperty()
+	id.Set(inboxURL)
+	inboxCollection.SetJSONLDId(id)
+	inboxSize, err := inbox.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine inbox size: got err=%v", err)
+	}
+	totalItems := streams.NewActivityStreamsTotalItemsProperty()
+	totalItems.Set(int(inboxSize))
+	inboxCollection.SetActivityStreamsTotalItems(totalItems)
+	first := streams.NewActivityStreamsFirstProperty()
+	firstURL, err := url.Parse(fmt.Sprintf("%s?page=true&local=%t", inboxURL.String(), local))
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine first URL: got err=%v", err)
+	}
+	first.SetIRI(firstURL)
+	inboxCollection.SetActivityStreamsFirst(first)
+	last := streams.NewActivityStreamsLastProperty()
+	lastURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=0&local=%t", inboxURL.String(), local))
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine last URL: got err=%v", err)
+	}
+	last.SetIRI(lastURL)
+	inboxCollection.SetActivityStreamsLast(last)
+	return inboxCollection, nil
+}
+
+// GetPublicInbox paginates the inbox 20 activities at a time using IDs.
+// ObjectIDs exceeding that maxID are ignored, and ObjectIDs under the min ID
+// are ignored.
+func (d *Datastore) GetPublicInbox(ctx context.Context, minID string, maxID string, local bool) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	inbox := d.client.Database("FediUni").Collection("inbox")
+	inboxURL, err := url.Parse(fmt.Sprintf("%s/inbox", d.server.String()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
+	}
+	filter := bson.M{
+		"isLocal": local,
+		"isReply": false,
+	}
+	opts := options.Find().SetSort(bson.D{{"_id", -1}}).SetLimit(20)
+	idFilters := bson.M{}
+	if minID != "0" {
+		id, err := primitive.ObjectIDFromHex(minID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse min_id: got err=%v", err)
+		}
+		idFilters["$gt"] = id
+	}
+	if maxID != "0" {
+		id, err := primitive.ObjectIDFromHex(maxID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse max_id: got err=%v", err)
+		}
+		idFilters["$lt"] = id
+	}
+	if len(idFilters) != 0 {
+		filter["_id"] = idFilters
+	}
+	cursor, err := inbox.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	page := streams.NewActivityStreamsOrderedCollectionPage()
+	orderedItems := streams.NewActivityStreamsOrderedItemsProperty()
+	activityResolver, err := streams.NewJSONResolver(func(ctx context.Context, c vocab.ActivityStreamsCreate) error {
+		orderedItems.AppendActivityStreamsCreate(c)
+		return nil
+	}, func(ctx context.Context, a vocab.ActivityStreamsAnnounce) error {
+		orderedItems.AppendActivityStreamsAnnounce(a)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new type resolver: got err=%v", err)
+	}
+	var firstID primitive.ObjectID
+	var lastID primitive.ObjectID
+	totalItems := 0
+	for cursor.Next(ctx) {
+		totalItems++
+		var m map[string]interface{}
+		if err := cursor.Decode(&m); err != nil {
+			return nil, err
+		}
+		if firstID.IsZero() {
+			firstID = m["_id"].(primitive.ObjectID)
+		}
+		if err := activityResolver.Resolve(ctx, m); err != nil {
+			return nil, err
+		}
+		lastID = m["_id"].(primitive.ObjectID)
+	}
+	totalItemsProperty := streams.NewActivityStreamsTotalItemsProperty()
+	totalItemsProperty.Set(totalItems)
+	page.SetActivityStreamsTotalItems(totalItemsProperty)
+	previous := streams.NewActivityStreamsPrevProperty()
+	previousURL, err := url.Parse(fmt.Sprintf("%s?page=true&local=%t&min_id=%s&max_id=%d", inboxURL.String(), local, firstID.Hex(), 0))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse previous URL: got err=%v", err)
+	}
+	previous.SetIRI(previousURL)
+	page.SetActivityStreamsPrev(previous)
+	next := streams.NewActivityStreamsNextProperty()
+	nextURL, err := url.Parse(fmt.Sprintf("%s?page=true&local=%t&min_id=%d&max_id=%s", inboxURL.String(), local, 0, lastID.Hex()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse next URL: got err=%v", err)
+
+	}
+	next.SetIRI(nextURL)
+	page.SetActivityStreamsNext(next)
+	inboxIRI := streams.NewJSONLDIdProperty()
+	inboxID, err := url.Parse(fmt.Sprintf("%s?page=true&local=%t", inboxURL.String(), local))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse inbox ID: got err=%v", err)
+	}
+	inboxIRI.Set(inboxID)
+	page.SetActivityStreamsOrderedItems(orderedItems)
+	return page, nil
 }
 
 func (d *Datastore) GetActivityByObjectID(ctx context.Context, activityID, baseURL string) (vocab.Type, error) {
@@ -561,14 +698,14 @@ func (d *Datastore) GetActorInbox(ctx context.Context, username string, minID st
 	totalItemsProperty.Set(totalItems)
 	page.SetActivityStreamsTotalItems(totalItemsProperty)
 	previous := streams.NewActivityStreamsPrevProperty()
-	previousURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=%s&max_id=%d", inboxURL.String(), firstID.Hex(), 0))
+	previousURL, err := url.Parse(fmt.Sprintf("%s?page=true&local=%t&min_id=%s&max_id=%d", inboxURL.String(), local, firstID.Hex(), 0))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse previous URL: got err=%v", err)
 	}
 	previous.SetIRI(previousURL)
 	page.SetActivityStreamsPrev(previous)
 	next := streams.NewActivityStreamsNextProperty()
-	nextURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=%d&max_id=%s", inboxURL.String(), 0, lastID.Hex()))
+	nextURL, err := url.Parse(fmt.Sprintf("%s?page=true&local=%t&min_id=%d&max_id=%s", inboxURL.String(), local, 0, lastID.Hex()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse next URL: got err=%v", err)
 
@@ -576,7 +713,7 @@ func (d *Datastore) GetActorInbox(ctx context.Context, username string, minID st
 	next.SetIRI(nextURL)
 	page.SetActivityStreamsNext(next)
 	inboxIRI := streams.NewJSONLDIdProperty()
-	inboxID, err := url.Parse(fmt.Sprintf("%s?page=true", inboxURL.String()))
+	inboxID, err := url.Parse(fmt.Sprintf("%s?page=true&local=%t", inboxURL.String(), local))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse inbox ID: got err=%v", err)
 	}

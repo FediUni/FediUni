@@ -23,6 +23,7 @@ import (
 )
 
 type TestDatastore struct {
+	Datastore
 	knownUsers  map[string]*user.User
 	knownActors map[string]actor.Person
 	privateKeys map[string]string
@@ -63,7 +64,7 @@ func (d *TestDatastore) CreateUser(_ context.Context, user *user.User) error {
 	return nil
 }
 
-func (d *TestDatastore) AddActivityToPublicInbox(_ context.Context, _ vocab.Type, _ primitive.ObjectID) error {
+func (d *TestDatastore) AddActivityToPublicInbox(_ context.Context, _ vocab.Type, _ primitive.ObjectID, b bool) error {
 	return fmt.Errorf("AddActivityToPublicInbox() is unimplemented")
 }
 
