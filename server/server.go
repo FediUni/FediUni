@@ -783,7 +783,8 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("failed to post messages"), http.StatusInternalServerError)
 			return
 		}
-		var inboxes []*url.URL
+		// Post to own inbox to allow user to view their own activities.
+		inboxes := []*url.URL{person.GetActivityStreamsInbox().GetIRI()}
 		for _, follower := range followers {
 			switch inbox := follower.GetActivityStreamsInbox(); {
 			case inbox == nil:
@@ -814,16 +815,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 				log.Errorf("failed to post to inbox=%q: got err=%v", inbox.String(), err)
 			}
 		}
-		isReply := false
-		if note.GetActivityStreamsInReplyTo() == nil {
-			isReply = false
-		} else if note.GetActivityStreamsInReplyTo().Len() > 0 {
-			isReply = true
-		}
-		// Post to own inbox to allow user to view their own activities.
-		if err := s.Client.PostToInbox(ctx, person.GetActivityStreamsInbox().GetIRI(), create, publicKeyID, privateKey); err != nil {
-			log.Errorf("failed to post to inbox=%q: got err=%v", person.GetActivityStreamsInbox().GetIRI().String(), err)
-		}
+		isReply := note.GetActivityStreamsInReplyTo() != nil || note.GetActivityStreamsInReplyTo().Len() > 0
 		for iter := create.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
 			if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
 				if err := s.Datastore.AddActivityToPublicInbox(ctx, create, primitive.NewObjectID(), isReply); err != nil {
