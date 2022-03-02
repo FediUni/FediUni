@@ -52,8 +52,8 @@ type Datastore interface {
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
 	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
-	GetActorInbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
-	GetActorInboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetActorInbox(context.Context, string, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
+	GetActorInboxAsOrderedCollection(context.Context, string, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 }
@@ -482,8 +482,12 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := r.URL.Query().Get("page")
+	var local bool
+	if l := r.URL.Query().Get("local"); strings.ToLower(l) == "true" {
+		local = true
+	}
 	if strings.ToLower(page) != "true" {
-		orderedCollection, err := s.Datastore.GetActorInboxAsOrderedCollection(ctx, username)
+		orderedCollection, err := s.Datastore.GetActorInboxAsOrderedCollection(ctx, username, local)
 		if err != nil {
 			log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
 			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
@@ -514,7 +518,7 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	if minID == "" {
 		minID = "0"
 	}
-	orderedCollectionPage, err := s.Datastore.GetActorInbox(ctx, username, minID, maxID)
+	orderedCollectionPage, err := s.Datastore.GetActorInbox(ctx, username, minID, maxID, local)
 	if err != nil {
 		log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
 		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)

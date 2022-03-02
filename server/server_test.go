@@ -111,11 +111,11 @@ func (d *TestDatastore) AddObjectsToActorInbox(context.Context, []vocab.Type, st
 	return fmt.Errorf("AddObjectsToActorInbox() is unimplemented")
 }
 
-func (d *TestDatastore) GetActorInbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+func (d *TestDatastore) GetActorInbox(context.Context, string, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error) {
 	return nil, fmt.Errorf("GetActorInbox() is unimplemented")
 }
 
-func (d *TestDatastore) GetActorInboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error) {
+func (d *TestDatastore) GetActorInboxAsOrderedCollection(context.Context, string, bool) (vocab.ActivityStreamsOrderedCollection, error) {
 	return nil, fmt.Errorf("GetActorInboxAsOrderedCollection() is unimplemented")
 }
 
