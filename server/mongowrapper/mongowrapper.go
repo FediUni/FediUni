@@ -205,9 +205,16 @@ func (d *Datastore) AddActivityToPublicInbox(ctx context.Context, activity vocab
 // This collection is used to traverse the publicInbox collection in Mongo.
 func (d *Datastore) GetPublicInboxAsOrderedCollection(ctx context.Context, local bool) (vocab.ActivityStreamsOrderedCollection, error) {
 	inbox := d.client.Database("FediUni").Collection("publicInbox")
-	filter := bson.D{
-		{"isLocal", local},
-		{"isReply", false},
+	var filter bson.D
+	if local {
+		filter = bson.D{
+			{"isReply", false},
+			{"isLocal", local},
+		}
+	} else {
+		filter = bson.D{
+			{"isReply", false},
+		}
 	}
 	inboxCollection := streams.NewActivityStreamsOrderedCollection()
 	inboxURL, err := url.Parse(fmt.Sprintf("%s/inbox", d.server.String()))
@@ -245,13 +252,12 @@ func (d *Datastore) GetPublicInboxAsOrderedCollection(ctx context.Context, local
 // ObjectIDs exceeding that maxID are ignored, and ObjectIDs under the min ID
 // are ignored.
 func (d *Datastore) GetPublicInbox(ctx context.Context, minID string, maxID string, local bool) (vocab.ActivityStreamsOrderedCollectionPage, error) {
-	inbox := d.client.Database("FediUni").Collection("inbox")
+	inbox := d.client.Database("FediUni").Collection("publicInbox")
 	inboxURL, err := url.Parse(fmt.Sprintf("%s/inbox", d.server.String()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
 	}
 	filter := bson.M{
-		"isLocal": local,
 		"isReply": false,
 	}
 	opts := options.Find().SetSort(bson.D{{"_id", -1}}).SetLimit(20)
@@ -269,6 +275,9 @@ func (d *Datastore) GetPublicInbox(ctx context.Context, minID string, maxID stri
 			return nil, fmt.Errorf("failed to parse max_id: got err=%v", err)
 		}
 		idFilters["$lt"] = id
+	}
+	if local {
+		filter["isLocal"] = true
 	}
 	if len(idFilters) != 0 {
 		filter["_id"] = idFilters
@@ -589,10 +598,18 @@ func (d *Datastore) GetActorOutbox(ctx context.Context, username, minID, maxID s
 
 func (d *Datastore) GetActorInboxAsOrderedCollection(ctx context.Context, username string, local bool) (vocab.ActivityStreamsOrderedCollection, error) {
 	inbox := d.client.Database("FediUni").Collection("inbox")
-	filter := bson.D{
-		{"recipient", username},
-		{"isLocal", local},
-		{"isReply", false},
+	var filter bson.D
+	if local {
+		filter = bson.D{
+			{"recipient", username},
+			{"isReply", false},
+			{"isLocal", local},
+		}
+	} else {
+		filter = bson.D{
+			{"recipient", username},
+			{"isReply", false},
+		}
 	}
 	inboxCollection := streams.NewActivityStreamsOrderedCollection()
 	inboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/inbox", d.server.String(), username))
@@ -638,8 +655,10 @@ func (d *Datastore) GetActorInbox(ctx context.Context, username string, minID st
 	}
 	filter := bson.M{
 		"recipient": username,
-		"isLocal":   local,
 		"isReply":   false,
+	}
+	if local {
+		filter["isLocal"] = true
 	}
 	opts := options.Find().SetSort(bson.D{{"_id", -1}}).SetLimit(20)
 	idFilters := bson.M{}
