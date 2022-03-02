@@ -814,7 +814,12 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 				log.Errorf("failed to post to inbox=%q: got err=%v", inbox.String(), err)
 			}
 		}
-		isReply := note.GetActivityStreamsInReplyTo().Len() != 0
+		isReply := false
+		if note.GetActivityStreamsInReplyTo() == nil {
+			isReply = false
+		} else if note.GetActivityStreamsInReplyTo().Len() > 0 {
+			isReply = true
+		}
 		// Post to own inbox to allow user to view their own activities.
 		if err := s.Client.PostToInbox(ctx, person.GetActivityStreamsInbox().GetIRI(), create, publicKeyID, privateKey); err != nil {
 			log.Errorf("failed to post to inbox=%q: got err=%v", person.GetActivityStreamsInbox().GetIRI().String(), err)
