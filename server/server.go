@@ -44,18 +44,19 @@ type Datastore interface {
 	GetFollowerStatus(context.Context, string, string) (int, error)
 	CreateUser(context.Context, *user.User) error
 	GetUserByUsername(context.Context, string) (*user.User, error)
-	AddActivityToActorInbox(context.Context, vocab.Type, string, bool) error
-	AddActivityToPublicInbox(context.Context, vocab.Type, primitive.ObjectID, bool) error
-	AddActivityToOutbox(context.Context, vocab.Type, string) error
 	AddFollowerToActor(context.Context, string, string) error
 	AddActorToFollows(context.Context, string, string) error
 	RemoveFollowerFromActor(context.Context, string, string) error
 	GetActorByActorID(context.Context, string) (actor.Person, error)
+	AddActivityToActivities(context.Context, vocab.Type, primitive.ObjectID) error
 	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
+	AddActivityToActorInbox(context.Context, vocab.Type, string, bool) error
 	GetActorInbox(context.Context, string, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorInboxAsOrderedCollection(context.Context, string, bool) (vocab.ActivityStreamsOrderedCollection, error)
+	AddActivityToOutbox(context.Context, vocab.Type, string) error
 	GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	AddActivityToPublicInbox(context.Context, vocab.Type, primitive.ObjectID, bool) error
 	GetPublicInbox(context.Context, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetPublicInboxAsOrderedCollection(context.Context, bool) (vocab.ActivityStreamsOrderedCollection, error)
 }
@@ -766,7 +767,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		create.SetActivityStreamsPublished(note.GetActivityStreamsPublished())
 		create.SetActivityStreamsTo(note.GetActivityStreamsTo())
 		create.SetActivityStreamsCc(note.GetActivityStreamsCc())
-		if err := s.Datastore.AddActivityToPublicInbox(ctx, create, objectID, false); err != nil {
+		if err := s.Datastore.AddActivityToActivities(ctx, create, objectID); err != nil {
 			log.Errorf("failed to add activities to datastore: got err=%v", err)
 			http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
 			return
@@ -811,6 +812,17 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 			log.Infof("Posting Create Activity to Inbox=%q", inbox.String())
 			if err := s.Client.PostToInbox(ctx, inbox, create, publicKeyID, privateKey); err != nil {
 				log.Errorf("failed to post to inbox=%q: got err=%v", inbox.String(), err)
+			}
+		}
+		// Post to own inbox to allow user to view their own activities.
+		if err := s.Client.PostToInbox(ctx, person.GetActivityStreamsInbox().GetIRI(), create, publicKeyID, privateKey); err != nil {
+			log.Errorf("failed to post to inbox=%q: got err=%v", person.GetActivityStreamsInbox().GetIRI().String(), err)
+		}
+		for iter := create.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
+			if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
+				if err := s.Datastore.AddActivityToPublicInbox(ctx, create, primitive.NewObjectID(), false); err != nil {
+					log.Errorf("failed to add activity to public inbox: got err=%v", err)
+				}
 			}
 		}
 	case "Image":
@@ -975,7 +987,7 @@ func (s *Server) sendFollowRequest(w http.ResponseWriter, r *http.Request) {
 	objectProperty := streams.NewActivityStreamsObjectProperty()
 	objectProperty.AppendActivityStreamsPerson(personToFollow)
 	followActivity.SetActivityStreamsObject(objectProperty)
-	if err := s.Datastore.AddActivityToPublicInbox(ctx, followActivity, primitive.NewObjectID(), false); err != nil {
+	if err := s.Datastore.AddActivityToActivities(ctx, followActivity, primitive.NewObjectID(), false); err != nil {
 		log.Errorf("Failed to add Follow Activity to Datastore: got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
 		return
@@ -1155,7 +1167,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err != nil {
 		return fmt.Errorf("failed to load person: got err=%v", err)
 	}
-	if err := s.Datastore.AddActivityToPublicInbox(ctx, accept, primitive.NewObjectID(), false); err != nil {
+	if err := s.Datastore.AddActivityToActivities(ctx, accept, primitive.NewObjectID()); err != nil {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
 	object, err := s.Client.FetchRemoteObject(ctx, followerID, false)

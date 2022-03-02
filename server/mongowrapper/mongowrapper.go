@@ -201,6 +201,30 @@ func (d *Datastore) AddActivityToPublicInbox(ctx context.Context, activity vocab
 	return nil
 }
 
+func (d *Datastore) AddActivityToActivities(ctx context.Context, activity vocab.Type, objectID primitive.ObjectID) error {
+	activities := d.client.Database("FediUni").Collection("activities")
+	if activity.GetJSONLDId() == nil {
+		id, err := url.Parse(fmt.Sprintf("%s/activity/%s", d.server.String(), objectID.Hex()))
+		if err != nil {
+			return err
+		}
+		idProperty := streams.NewJSONLDIdProperty()
+		idProperty.Set(id)
+		activity.SetJSONLDId(idProperty)
+	}
+	marshalledActivity, err := streams.Serialize(activity)
+	if err != nil {
+		return err
+	}
+	marshalledActivity["_id"] = objectID
+	res, err := activities.InsertOne(ctx, marshalledActivity)
+	if err != nil {
+		return err
+	}
+	log.Infof("Inserted activity with _id=%q", res.InsertedID)
+	return nil
+}
+
 // GetPublicInboxAsOrderedCollection returns an orderedCollection.
 // This collection is used to traverse the publicInbox collection in Mongo.
 func (d *Datastore) GetPublicInboxAsOrderedCollection(ctx context.Context, local bool) (vocab.ActivityStreamsOrderedCollection, error) {
