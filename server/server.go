@@ -108,7 +108,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	activitypubRouter.Get("/actor", s.getAnyActor)
 	activitypubRouter.Get("/actor/{username}", s.getActor)
 	activitypubRouter.Get("/actor/outbox", s.getAnyActorOutbox)
-	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/inbox", s.getActorInbox)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/inbox", s.getPublicInbox)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
 	activitypubRouter.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	activitypubRouter.Get("/actor/{username}/outbox", s.getActorOutbox)
