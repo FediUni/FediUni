@@ -159,7 +159,7 @@ func (c *Client) ResolveActorIdentifierToID(ctx context.Context, identifier stri
 	domain := splitIdentifier[2]
 	webfingerResponse, err := c.WebfingerLookup(ctx, domain, username)
 	if err != nil {
-		log.Errorf("failed to lookup actor=%q, got err=%v", fmt.Sprintf("@%s@%s", username, domain), err)
+		log.Errorf("failed to lookup actor=%q, got webfinger err=%v", fmt.Sprintf("@%s@%s", username, domain), err)
 		return nil, fmt.Errorf("failed to fetch remote actor: got err=%v", err)
 	}
 	var actorID *url.URL

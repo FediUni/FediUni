@@ -495,7 +495,7 @@ func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.
 
 func (d *Datastore) GetActorOutboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
 	outbox := d.client.Database("FediUni").Collection("outbox")
-	filter := bson.D{{"author", username}}
+	filter := bson.D{{"sender", username}}
 	outboxCollection := streams.NewActivityStreamsOrderedCollection()
 	outboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/outbox", d.server.String(), username))
 	if err != nil {
@@ -534,7 +534,7 @@ func (d *Datastore) GetActorOutboxAsOrderedCollection(ctx context.Context, usern
 func (d *Datastore) GetActorOutbox(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
 	log.Infof("Searching for Recipient with Username=%q", username)
 	outbox := d.client.Database("FediUni").Collection("outbox")
-	filter := bson.M{"recipient": username}
+	filter := bson.M{"sender": strings.ToLower(username)}
 	outboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/outbox", d.server.String(), username))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
