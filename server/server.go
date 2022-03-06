@@ -1095,7 +1095,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 			for c := content.Begin(); c != nil; c = c.Next() {
 				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
 			}
-			if note.GetActivityStreamsInReplyTo() != nil && note.GetActivityStreamsInReplyTo().Len() != 0 {
+			if note.GetActivityStreamsInReplyTo() != nil && note.GetActivityStreamsInReplyTo().Len() > 0 {
 				isReply = true
 			}
 		default:
@@ -1107,6 +1107,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	}
 	for iter := create.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
 		if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
+			log.Infof("Posting ID=%q to Public Inbox", create.GetJSONLDId().Get().String())
 			return s.Datastore.AddActivityToPublicInbox(ctx, activityRequest, primitive.NewObjectID(), isReply)
 		}
 	}
