@@ -596,6 +596,14 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
 		return
 	}
+	orderedItems := orderedCollectionPage.GetActivityStreamsOrderedItems()
+	for iter := orderedItems.Begin(); iter != orderedItems.End(); iter = iter.Next() {
+		switch {
+		case iter.IsActivityStreamsCreate():
+			s.Client.Note(ctx, iter.GetActivityStreamsNote())
+		case iter.IsActivityStreamsAnnounce():
+		}
+	}
 	serializedOrderedCollection, err := streams.Serialize(orderedCollectionPage)
 	if err != nil {
 		log.Errorf("Failed to serialize Ordered Collection Page Inbox of Username=%q: got err=%v", username, err)

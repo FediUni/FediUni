@@ -200,6 +200,26 @@ func (c *Client) FetchRemotePerson(ctx context.Context, identifier string) (voca
 	return person, err
 }
 
+// FetchRemotePersonWithID uses the provided ID to retrieve a Person.
+func (c *Client) FetchRemotePersonWithID(ctx context.Context, personID *url.URL) (vocab.ActivityStreamsPerson, error) {
+	actor, err := c.FetchRemoteObject(ctx, personID, false)
+	if err != nil {
+		return nil, err
+	}
+	var person vocab.ActivityStreamsPerson
+	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
+		person = p
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := resolver.Resolve(ctx, actor); err != nil {
+		return nil, err
+	}
+	return person, err
+}
+
 // FetchRemoteActor performs a Webfinger lookup and returns an Actor.
 func (c *Client) FetchRemoteActor(ctx context.Context, identifier string) (vocab.Type, error) {
 	actorID, err := c.ResolveActorIdentifierToID(ctx, identifier)
@@ -326,26 +346,20 @@ func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID str
 
 // Create dereferences the actor and object fields of the activity.
 func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate) error {
+	// Derefrence all Actors of type Person in actor field.
 	for iter := create.GetActivityStreamsActor().Begin(); iter != nil; iter = iter.Next() {
-		if !iter.IsIRI() {
-			continue
+		var actorID *url.URL
+		switch {
+		case iter.IsIRI():
+			actorID = iter.GetIRI()
+		case iter.IsActivityStreamsPerson():
+			actorID = iter.GetActivityStreamsPerson().GetJSONLDId().Get()
 		}
-		actorID := iter.GetIRI()
-		actorRetrieved, err := c.FetchRemoteObject(ctx, actorID, false)
+		person, err := c.FetchRemotePersonWithID(ctx, actorID)
 		if err != nil {
-			return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID.String(), err)
+			return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID, err)
 		}
-		switch actorRetrieved.GetTypeName() {
-		case "Person":
-			person, err := actor.ParsePerson(ctx, actorRetrieved)
-			if err != nil {
-				return fmt.Errorf("failed to parse Actor ID=%q as Person: got err=%v", actorID.String(), err)
-			}
-			iter.SetActivityStreamsPerson(person)
-		}
-	}
-	if create.GetActivityStreamsObject() == nil {
-		return fmt.Errorf("create activity fails to provide an object: got=%v", nil)
+		iter.SetActivityStreamsPerson(person)
 	}
 	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		if !iter.IsIRI() {
@@ -374,22 +388,18 @@ func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate)
 // Announce dereferences the actor and object fields of the activity.
 func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnnounce) error {
 	for iter := announce.GetActivityStreamsActor().Begin(); iter != nil; iter = iter.Next() {
-		if !iter.IsIRI() {
-			continue
+		var actorID *url.URL
+		switch {
+		case iter.IsIRI():
+			actorID = iter.GetIRI()
+		case iter.IsActivityStreamsPerson():
+			actorID = iter.GetActivityStreamsPerson().GetJSONLDId().Get()
 		}
-		actorID := iter.GetIRI()
-		actorRetrieved, err := c.FetchRemoteObject(ctx, actorID, false)
+		person, err := c.FetchRemotePersonWithID(ctx, actorID)
 		if err != nil {
-			return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID.String(), err)
+			return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID, err)
 		}
-		switch actorRetrieved.GetTypeName() {
-		case "Person":
-			person, err := actor.ParsePerson(ctx, actorRetrieved)
-			if err != nil {
-				return fmt.Errorf("failed to parse Actor ID=%q as Person: got err=%v", actorID.String(), err)
-			}
-			iter.SetActivityStreamsPerson(person)
-		}
+		iter.SetActivityStreamsPerson(person)
 	}
 	for iter := announce.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		if !iter.IsIRI() {
@@ -415,21 +425,29 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 	return nil
 }
 
+// Note dereferences the actors of type Person in attributedTo.
 func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote) error {
 	for iter := note.GetActivityStreamsAttributedTo().Begin(); iter != nil; iter = iter.Next() {
-		if !iter.IsIRI() {
-			continue
-		}
-		actorID := iter.GetIRI()
-		actorRetrieved, err := c.FetchRemoteObject(ctx, actorID, false)
-		if err != nil {
-			return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID.String(), err)
-		}
-		switch actorRetrieved.GetTypeName() {
-		case "Person":
-			person, err := actor.ParsePerson(ctx, actorRetrieved)
+		switch {
+		case iter.IsIRI():
+			actorID := iter.GetIRI()
+			actorRetrieved, err := c.FetchRemoteObject(ctx, actorID, false)
 			if err != nil {
-				return fmt.Errorf("failed to parse Actor ID=%q as Person: got err=%v", actorID.String(), err)
+				return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID.String(), err)
+			}
+			switch actorRetrieved.GetTypeName() {
+			case "Person":
+				person, err := actor.ParsePerson(ctx, actorRetrieved)
+				if err != nil {
+					return fmt.Errorf("failed to parse Actor ID=%q as Person: got err=%v", actorID.String(), err)
+				}
+				iter.SetActivityStreamsPerson(person)
+			}
+		case iter.IsActivityStreamsPerson():
+			p := iter.GetActivityStreamsPerson()
+			person, err := c.FetchRemotePersonWithID(ctx, p.GetJSONLDId().Get())
+			if err != nil {
+				return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", p.GetJSONLDId().Get().String(), err)
 			}
 			iter.SetActivityStreamsPerson(person)
 		}
