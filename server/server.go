@@ -1095,6 +1095,8 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 			for c := content.Begin(); c != nil; c = c.Next() {
 				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
 			}
+			log.Infof("inReplyTo == %v", note.GetActivityStreamsInReplyTo())
+			log.Infof("len(inReplyTo) == %v", note.GetActivityStreamsInReplyTo().Len())
 			if note.GetActivityStreamsInReplyTo() != nil && note.GetActivityStreamsInReplyTo().Len() > 0 {
 				isReply = true
 			}
