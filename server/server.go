@@ -1105,6 +1105,10 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if err := s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username, isReply); err != nil {
 		return fmt.Errorf("failed to add to actor inbox: got err=%v", err)
 	}
+	// Don't forward replies to the public inbox to avoid clutter.
+	if isReply {
+		return nil
+	}
 	for iter := create.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
 		if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
 			log.Infof("Posting ID=%q to Public Inbox", create.GetJSONLDId().Get().String())
