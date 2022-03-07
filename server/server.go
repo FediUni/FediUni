@@ -816,8 +816,13 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		isReply := false
-		if note.GetActivityStreamsInReplyTo() != nil && note.GetActivityStreamsInReplyTo().Len() > 0 {
-			isReply = true
+		if inReplyToProperty := note.GetActivityStreamsInReplyTo(); inReplyToProperty != nil {
+			for iter := inReplyToProperty.Begin(); iter != inReplyToProperty.End(); iter = iter.Next() {
+				if iter.IsIRI() && iter.GetIRI() != nil {
+					isReply = true
+					break
+				}
+			}
 		}
 		for iter := create.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
 			if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
@@ -1095,10 +1100,13 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 			for c := content.Begin(); c != nil; c = c.Next() {
 				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
 			}
-			log.Infof("inReplyTo == %v", note.GetActivityStreamsInReplyTo())
-			log.Infof("len(inReplyTo) == %v", note.GetActivityStreamsInReplyTo().Len())
-			if note.GetActivityStreamsInReplyTo() != nil && note.GetActivityStreamsInReplyTo().Len() > 0 {
-				isReply = true
+			if inReplyToProperty := note.GetActivityStreamsInReplyTo(); inReplyToProperty != nil {
+				for iter := inReplyToProperty.Begin(); iter != inReplyToProperty.End(); iter = iter.Next() {
+					if iter.IsIRI() && iter.GetIRI() != nil {
+						isReply = true
+						break
+					}
+				}
 			}
 		default:
 			return fmt.Errorf("non-note activity presented")
