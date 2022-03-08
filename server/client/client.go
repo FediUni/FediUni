@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"time"
@@ -302,6 +303,12 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 		return err
 	}
 	log.Infof("Sending Request...")
+	dump, err := httputil.DumpRequestOut(req, true)
+	if err != nil {
+		log.Errorf("Can't dump: %v", err)
+	} else {
+		log.Infof("%s", dump)
+	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
