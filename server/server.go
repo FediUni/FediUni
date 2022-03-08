@@ -117,6 +117,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	activitypubRouter.Get("/actor/{username}/followers", s.getFollowers)
 	activitypubRouter.Get("/actor/{username}/following", s.getFollowing)
 	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
+	activitypubRouter.Get("/activity", s.getAnyActivity)
 	activitypubRouter.Post("/register", s.createUser)
 	activitypubRouter.Post("/login", s.login)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
@@ -369,6 +370,44 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
 
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledActivity)
+}
+
+func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	activity := r.URL.Query().Get("id")
+	if activity == "" {
+		http.Error(w, "Activity ID is unspecified", http.StatusBadRequest)
+		return
+	}
+	activityID, err := url.Parse(activity)
+	if err != nil {
+		http.Error(w, "Activity ID is not a URL", http.StatusBadRequest)
+		return
+	}
+	object, err := s.Client.FetchRemoteObject(ctx, activityID, false)
+	if err != nil {
+		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
+		return
+	}
+	switch object.GetTypeName() {
+	case "Create":
+	case "Announce":
+	default:
+		http.Error(w, "Failed to retrieve a Create or Announce activity", http.StatusBadRequest)
+	}
+	serializedActivity, err := streams.Serialize(object)
+	if err != nil {
+		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
+		return
+	}
+	marshalledActivity, err := json.Marshal(serializedActivity)
+	if err != nil {
+		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledActivity)
 }
