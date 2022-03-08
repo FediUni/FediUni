@@ -19,18 +19,14 @@ import (
 // Signature validates the "Signature" header using the public key.
 func Signature(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		signatureHeader, err := processSignatureHeader(r.Header)
+		verifier, err := httpsig.NewVerifier(r)
 		if err != nil {
-			log.Errorf("failed to parse signature, got err=%v", err)
-			http.Error(w, "failed to parse signature", http.StatusBadRequest)
+			log.Errorf("failed to create verifier: got err=%v", err)
+			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
 			return
 		}
-		key := signatureHeader["keyId"]
-		if key == "" {
-			http.Error(w, "keyId not provided", http.StatusBadRequest)
-			return
-		}
-		req, err := http.NewRequest(http.MethodGet, key, nil)
+		keyID := verifier.KeyId()
+		req, err := http.NewRequest(http.MethodGet, keyID, nil)
 		if err != nil {
 			log.Errorf("failed to create new request: got err=%v", err)
 			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
@@ -90,14 +86,6 @@ func Signature(next http.Handler) http.Handler {
 			return
 		}
 		log.Infoln("Public Key successfully parsed.")
-		verifier, err := httpsig.NewVerifier(r)
-		if err != nil {
-			log.Errorf("failed to create verifier: got err=%v", err)
-			http.Error(w, "failed to validate signature", http.StatusInternalServerError)
-			return
-		}
-		// Ensure Host Header is set.
-		r.Header.Set("Host", r.Host)
 		if err := verifier.Verify(parsedKey, httpsig.RSA_SHA256); err != nil {
 			log.Errorf("failed to verify the provided signature, got err=%v", err)
 			http.Error(w, "failed to validate signature", http.StatusInternalServerError)

@@ -87,7 +87,10 @@ func TestValidate(t *testing.T) {
 				w.Write(marshalledPerson)
 			})
 			server := httptest.NewServer(r)
-			serverURL, _ := url.Parse(server.URL)
+			serverURL, err := url.Parse(server.URL)
+			if err != nil {
+				t.Fatalf("failed to parse server URL: got err=%v", err)
+			}
 			defer server.Close()
 			body := []byte("testbody")
 			request, _ := http.NewRequest("POST", fmt.Sprintf("%s/actor/brandonstark/inbox", serverURL), bytes.NewBuffer(body))
