@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
+	"github.com/go-fed/httpsig"
 	log "github.com/golang/glog"
-	"github.com/spacemonkeygo/httpsig"
 )
 
 func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateKey *rsa.PrivateKey, body []byte) (*http.Request, error) {
@@ -29,20 +28,11 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 	host := url.Host
 	r.Header.Set("Host", host)
 	r.Header.Set("Date", httpDate)
-	r, err := CalculateDigestHeader(r)
-	if err != nil {
-		return nil, fmt.Errorf("failed to calculate Digest header: got err=%v", err)
-	}
+	preferences := []httpsig.Algorithm{httpsig.RSA_SHA256}
 	headersToSign := []string{"(request-target)", "host", "date", "digest"}
-	signer := httpsig.NewRSASHA256Signer(keyID, privateKey, headersToSign)
-	if err := signer.Sign(r); err != nil {
-		return nil, fmt.Errorf("failed to sign request: got err=%v", err)
+	signer, _, err := httpsig.NewSigner(preferences, httpsig.DigestSha256, headersToSign, httpsig.Signature)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create signer: got err=%v", err)
 	}
-	authorizationHeader := r.Header.Get("Authorization")
-	log.Infof("Authorization=%q", authorizationHeader)
-	splitHeader := strings.SplitN(authorizationHeader, " ", 2)
-	r.Header.Set("Signature", splitHeader[1])
-	log.Infof("Signature=%q", splitHeader[1])
-	r.Header.Del("Authorization")
-	return r, nil
+	return r, signer.SignRequest(privateKey, keyID, r, body)
 }

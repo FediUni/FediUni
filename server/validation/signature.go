@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"github.com/FediUni/FediUni/server/actor"
 	"github.com/go-fed/activity/streams"
-	"github.com/go-fed/activity/streams/vocab"
-	"github.com/go-fed/httpsig"
-	log "github.com/golang/glog"
 	"io/ioutil"
 	"net/http"
 	"strings"
+
+	"github.com/go-fed/activity/streams/vocab"
+	"github.com/go-fed/httpsig"
+
+	log "github.com/golang/glog"
 )
 
 // Signature validates the "Signature" header using the public key.
@@ -19,18 +21,16 @@ func Signature(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		signatureHeader, err := processSignatureHeader(r.Header)
 		if err != nil {
-			log.Errorf("failed to parse validation, got err=%v", err)
-			http.Error(w, "failed to parse validation", http.StatusBadRequest)
+			log.Errorf("failed to parse signature, got err=%v", err)
+			http.Error(w, "failed to parse signature", http.StatusBadRequest)
 			return
 		}
-		keyID := signatureHeader["keyId"]
-		if keyID == "" {
-			log.Errorf("keyId not provided")
+		key := signatureHeader["keyId"]
+		if key == "" {
 			http.Error(w, "keyId not provided", http.StatusBadRequest)
 			return
 		}
-		log.Infof("Retrieving public key from url=%q", keyID)
-		req, err := http.NewRequest(http.MethodGet, keyID, nil)
+		req, err := http.NewRequest(http.MethodGet, key, nil)
 		if err != nil {
 			log.Errorf("failed to create new request: got err=%v", err)
 			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
@@ -51,19 +51,10 @@ func Signature(next http.Handler) http.Handler {
 			return
 		}
 		var person actor.Person
-		var publicKey actor.PublicKey
 		resolver, err := streams.NewJSONResolver(func(c context.Context, p vocab.ActivityStreamsPerson) error {
 			person = p
 			return nil
-		}, func(c context.Context, k vocab.W3IDSecurityV1PublicKey) error {
-			publicKey = k
-			return nil
 		})
-		if err != nil {
-			log.Errorf("failed to create resolver, got err=%v", err)
-			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
-			return
-		}
 		var m map[string]interface{}
 		if err := json.Unmarshal(marshalledActor, &m); err != nil {
 			log.Errorf("failed to unmarshal person, got err=%v", err)
@@ -75,18 +66,22 @@ func Signature(next http.Handler) http.Handler {
 			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
 			return
 		}
-		if publicKey == nil {
-			log.Infof("Public Key is not set by resolver, checking Person")
-		}
-		if person.GetW3IDSecurityV1PublicKey().Empty() {
-			log.Errorf("Public Key Property in Person is empty")
+		if err != nil {
+			log.Errorf("failed to create resolver, got err=%v", err)
 			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
 			return
 		}
-		if publicKey = person.GetW3IDSecurityV1PublicKey().Begin().Get(); publicKey == nil {
-			log.Errorf("Public Key is not set! got=%v", publicKey)
-			http.Error(w, "failed to retrieve public key", http.StatusInternalServerError)
+		publicKeyProperty := person.GetW3IDSecurityV1PublicKey()
+		if publicKeyProperty == nil {
+			http.Error(w, "Failed to retrieve public key", http.StatusBadRequest)
 			return
+		}
+		var publicKey vocab.W3IDSecurityV1PublicKey
+		for iter := publicKeyProperty.Begin(); iter != publicKeyProperty.End(); iter = iter.Next() {
+			if iter.IsW3IDSecurityV1PublicKey() {
+				publicKey = iter.Get()
+				break
+			}
 		}
 		parsedKey, err := parsePublicKeyFromPEMBlock(publicKey.GetW3IDSecurityV1PublicKeyPem().Get())
 		if err != nil {
