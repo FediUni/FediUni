@@ -427,6 +427,12 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 
 // Note dereferences the actors of type Person in attributedTo.
 func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote) error {
+	if note == nil {
+		return fmt.Errorf("error in dereferencing note: got note=%v", note)
+	}
+	if note.GetActivityStreamsAttributedTo() == nil {
+		return fmt.Errorf("error in dereferencing note: got attributedTo=%v", note.GetActivityStreamsAttributedTo())
+	}
 	for iter := note.GetActivityStreamsAttributedTo().Begin(); iter != nil; iter = iter.Next() {
 		switch {
 		case iter.IsIRI():
