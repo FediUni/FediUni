@@ -9,7 +9,7 @@ require (
 	github.com/go-chi/httprate v0.5.2
 	github.com/go-chi/jwtauth v1.2.0
 	github.com/go-fed/activity v1.0.0
-	github.com/go-fed/httpsig v0.1.1-0.20190914113940-c2de3672e5b5
+	github.com/go-fed/httpsig v1.1.0
 	github.com/golang/glog v1.0.0
 	github.com/google/go-cmp v0.5.7
 	github.com/spf13/viper v1.10.1
@@ -22,7 +22,6 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.17
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.18.1 // indirect
-	github.com/spacemonkeygo/httpsig v0.0.0-20181218213338-2605ae379e47
 	github.com/spf13/afero v1.7.1 // indirect
 )
 

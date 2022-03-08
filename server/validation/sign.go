@@ -26,10 +26,11 @@ func SignRequestWithDigest(r *http.Request, url *url.URL, keyID string, privateK
 		return nil, fmt.Errorf("failed to receive body: got=%v", body)
 	}
 	httpDate := time.Now().UTC().Format(http.TimeFormat)
+	r.Header.Add("host", r.Host)
 	r.Header.Add("date", httpDate)
-	preferences := []httpsig.Algorithm{httpsig.RSA_SHA256}
-	headersToSign := []string{httpsig.RequestTarget, "date", "digest"}
-	signer, _, err := httpsig.NewSigner(preferences, httpsig.DigestSha256, headersToSign, httpsig.Signature)
+	preferences := []httpsig.Algorithm{httpsig.RSA_SHA256, httpsig.RSA_SHA512}
+	headersToSign := []string{httpsig.RequestTarget, "host", "date", "digest"}
+	signer, _, err := httpsig.NewSigner(preferences, httpsig.DigestSha256, headersToSign, httpsig.Signature, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create signer: got err=%v", err)
 	}
