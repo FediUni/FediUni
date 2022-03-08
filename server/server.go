@@ -586,8 +586,19 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	_, _, err := jwtauth.FromContext(ctx)
+	_, claims, err := jwtauth.FromContext(ctx)
 	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
+	jwtUsername, err := parseJWTUsername(claims)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
+	if username != jwtUsername {
 		log.Errorf("Failed to read from JWT: got err=%v", err)
 		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
 		return
