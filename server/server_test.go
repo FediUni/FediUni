@@ -68,7 +68,7 @@ func (d *TestDatastore) AddActivityToPublicInbox(_ context.Context, _ vocab.Type
 	return fmt.Errorf("AddActivityToPublicInbox() is unimplemented")
 }
 
-func (d *TestDatastore) AddActivityToActorInbox(context.Context, vocab.Type, string, bool) error {
+func (d *TestDatastore) AddActivityToActorInbox(context.Context, vocab.Type, string, *url.URL) error {
 	return fmt.Errorf("AddActivityToActorInbox() is unimplemented")
 }
 

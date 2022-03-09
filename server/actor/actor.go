@@ -110,8 +110,11 @@ func (p *PersonGenerator) NewPerson(username, displayName string) (Person, error
 	publicKeyProperty.AppendW3IDSecurityV1PublicKey(publicKey)
 	person.SetW3IDSecurityV1PublicKey(publicKeyProperty)
 	preferredUsernameProperty := streams.NewActivityStreamsPreferredUsernameProperty()
-	preferredUsernameProperty.SetXMLSchemaString(strings.ToLower(displayName))
+	preferredUsernameProperty.SetXMLSchemaString(strings.ToLower(username))
 	person.SetActivityStreamsPreferredUsername(preferredUsernameProperty)
+	nameProperty := streams.NewActivityStreamsNameProperty()
+	nameProperty.AppendXMLSchemaString(displayName)
+	person.SetActivityStreamsName(nameProperty)
 	return person, nil
 }
 

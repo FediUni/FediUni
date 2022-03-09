@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/FediUni/FediUni/server/activity"
 	"net/url"
 	"strings"
 
@@ -475,14 +476,16 @@ func (d *Datastore) AddObjectsToActorInbox(ctx context.Context, objects []vocab.
 	return nil
 }
 
-func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.Type, username string, isReply bool) error {
+func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.Type, username string, inReplyTo *url.URL) error {
 	inbox := d.client.Database("FediUni").Collection("inbox")
 	m, err := streams.Serialize(activity)
 	if err != nil {
 		return err
 	}
 	m["recipient"] = username
-	m["isReply"] = isReply
+	if inReplyTo != nil {
+		m["isReply"] = true
+	}
 	// If the hostname matches the activity was created locally.
 	m["isLocal"] = activity.GetJSONLDId().Get().Host == d.server.Host
 	res, err := inbox.InsertOne(ctx, m)
@@ -490,6 +493,73 @@ func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.
 		return err
 	}
 	log.Infof("Inserted Activity=%q: got=%v", activity.GetJSONLDId().Get().String(), res)
+	return nil
+}
+
+func (d *Datastore) AddReplyToActivity(ctx context.Context, object vocab.Type, inReplyTo *url.URL) error {
+	a, err := d.GetActivityByActivityID(ctx, inReplyTo.String())
+	if err != nil {
+		return err
+	}
+	var o vocab.ActivityStreamsObjectProperty
+	switch a.GetTypeName() {
+	case "Create":
+		create, err := activity.ParseCreateActivity(ctx, a)
+		if err != nil {
+			return err
+		}
+		o = create.GetActivityStreamsObject()
+	case "Announce":
+		announce, err := activity.ParseAnnounceActivity(ctx, a)
+		if err != nil {
+			return err
+		}
+		o = announce.GetActivityStreamsObject()
+	}
+	if o == nil {
+		return fmt.Errorf("cannot add reply to nil object")
+	}
+	for iter := o.Begin(); iter != o.End(); iter = iter.Next() {
+		switch {
+		case iter.IsActivityStreamsNote():
+			note := iter.GetActivityStreamsNote()
+			if note == nil {
+				return fmt.Errorf("cannot add reply to nil note")
+			}
+			replies := note.GetActivityStreamsReplies()
+			if replies == nil {
+				return fmt.Errorf("reply property is nil")
+			}
+			collection := replies.GetActivityStreamsCollection()
+			if collection == nil {
+				return fmt.Errorf("collection property is nil")
+			}
+			items := collection.GetActivityStreamsItems()
+			if items == nil {
+				return fmt.Errorf("collection property is nil")
+			}
+			if err := items.AppendType(object); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("replying to Object of type=%q is unsupported", iter.GetType())
+		}
+	}
+	return d.UpdateActivity(ctx, a, inReplyTo)
+}
+
+func (d *Datastore) UpdateActivity(ctx context.Context, activity vocab.Type, inReplyTo *url.URL) error {
+	inbox := d.client.Database("FediUni").Collection("inbox")
+	marshalledActivity, err := streams.Serialize(activity)
+	if err != nil {
+		return err
+	}
+	marshalledActivity["isReply"] = inReplyTo != nil
+	// If the hostname matches the activity was created locally.
+	marshalledActivity["isLocal"] = activity.GetJSONLDId().Get().Host == d.server.Host
+	if _, err := inbox.ReplaceOne(ctx, bson.D{{"id", activity.GetJSONLDId().Get()}}, marshalledActivity); err != nil {
+		return err
+	}
 	return nil
 }
 

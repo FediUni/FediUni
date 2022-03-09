@@ -50,7 +50,7 @@ type Datastore interface {
 	GetActorByActorID(context.Context, string) (actor.Person, error)
 	AddActivityToActivities(context.Context, vocab.Type, primitive.ObjectID) error
 	AddObjectsToActorInbox(context.Context, []vocab.Type, string) error
-	AddActivityToActorInbox(context.Context, vocab.Type, string, bool) error
+	AddActivityToActorInbox(context.Context, vocab.Type, string, *url.URL) error
 	GetActorInbox(context.Context, string, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorInboxAsOrderedCollection(context.Context, string, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	AddActivityToOutbox(context.Context, vocab.Type, string) error
@@ -59,8 +59,8 @@ type Datastore interface {
 	AddActivityToPublicInbox(context.Context, vocab.Type, primitive.ObjectID, bool) error
 	GetPublicInbox(context.Context, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetPublicInboxAsOrderedCollection(context.Context, bool) (vocab.ActivityStreamsOrderedCollection, error)
+	AddReplyToActivity(context.Context, vocab.Type, *url.URL) error
 }
-
 type Server struct {
 	URL          *url.URL
 	Router       *chi.Mux
@@ -1149,7 +1149,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if err := s.Client.Create(ctx, create); err != nil {
 		return fmt.Errorf("failed to dereference Create Activity: got err=%v", err)
 	}
-	isReply := false
+	var inReplyTo *url.URL
 	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		switch {
 		case iter.IsActivityStreamsNote():
@@ -1161,7 +1161,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 			if inReplyToProperty := note.GetActivityStreamsInReplyTo(); inReplyToProperty != nil {
 				for iter := inReplyToProperty.Begin(); iter != inReplyToProperty.End(); iter = iter.Next() {
 					if iter.IsIRI() && iter.GetIRI() != nil {
-						isReply = true
+						inReplyTo = iter.GetIRI()
 						break
 					}
 				}
@@ -1170,17 +1170,20 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 			return fmt.Errorf("non-note activity presented")
 		}
 	}
-	if err := s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username, isReply); err != nil {
+	if err := s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username, inReplyTo); err != nil {
 		return fmt.Errorf("failed to add to actor inbox: got err=%v", err)
 	}
 	// Don't forward replies to the public inbox to avoid clutter.
-	if isReply {
+	if inReplyTo != nil {
+		if err := s.Datastore.AddReplyToActivity(ctx, create.GetActivityStreamsObject().Begin().GetType(), inReplyTo); err != nil {
+			return err
+		}
 		return nil
 	}
 	for iter := create.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
 		if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
 			log.Infof("Posting ID=%q to Public Inbox", create.GetJSONLDId().Get().String())
-			return s.Datastore.AddActivityToPublicInbox(ctx, activityRequest, primitive.NewObjectID(), isReply)
+			return s.Datastore.AddActivityToPublicInbox(ctx, activityRequest, primitive.NewObjectID(), inReplyTo != nil)
 		}
 	}
 	return nil
@@ -1213,7 +1216,7 @@ func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest voca
 			return fmt.Errorf("non-note activity presented")
 		}
 	}
-	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username, false)
+	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username, nil)
 }
 
 // handleFollowRequest allows the actor to follow the requested person on this instance.
