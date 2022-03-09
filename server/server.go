@@ -397,6 +397,7 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 	case "Announce":
 	default:
 		http.Error(w, "Failed to retrieve a Create or Announce activity", http.StatusBadRequest)
+		return
 	}
 	serializedActivity, err := streams.Serialize(object)
 	if err != nil {
@@ -521,9 +522,15 @@ func (s *Server) getPublicInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := r.URL.Query().Get("page")
-	var local bool
+	var local, university bool
 	if l := r.URL.Query().Get("local"); strings.ToLower(l) == "true" {
 		local = true
+	}
+	if u := r.URL.Query().Get("university"); strings.ToLower(u) == "true" {
+		university = true
+	}
+	if university {
+		log.Infof("Should load university posts")
 	}
 	if strings.ToLower(page) != "true" {
 		orderedCollection, err := s.Datastore.GetPublicInboxAsOrderedCollection(ctx, local)

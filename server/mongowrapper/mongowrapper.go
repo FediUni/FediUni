@@ -75,11 +75,18 @@ func (d *Datastore) GetFollowersByUsername(ctx context.Context, username string)
 	actors := d.client.Database("FediUni").Collection("followers")
 	filter := bson.D{{"_id", actor.GetJSONLDId().Get().String()}}
 	var f followersCollection
-	if err := actors.FindOne(ctx, filter).Decode(&f); err != nil {
-		return nil, err
-	}
 	followers := streams.NewActivityStreamsOrderedCollection()
 	orderedFollowers := streams.NewActivityStreamsOrderedItemsProperty()
+	followers.SetActivityStreamsOrderedItems(orderedFollowers)
+	res := actors.FindOne(ctx, filter)
+	if err := res.Err(); err == mongo.ErrNoDocuments {
+		return followers, nil
+	} else if err != nil {
+		return nil, err
+	}
+	if err := res.Decode(&f); err != nil {
+		return nil, err
+	}
 	for _, follower := range f.Followers {
 		followerID, err := url.Parse(follower)
 		if err != nil {
@@ -87,7 +94,6 @@ func (d *Datastore) GetFollowersByUsername(ctx context.Context, username string)
 		}
 		orderedFollowers.AppendIRI(followerID)
 	}
-	followers.SetActivityStreamsOrderedItems(orderedFollowers)
 	return followers, nil
 }
 
