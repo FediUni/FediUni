@@ -251,7 +251,7 @@ func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load outbox", http.StatusNotFound)
 		return
 	}
-	outboxPage, err := s.Client.FetchRemoteObject(r.Context(), outboxPageIRI, false, 0)
+	outboxPage, err := s.Client.FetchRemoteObject(r.Context(), outboxPageIRI, false, 0, false)
 	if err != nil {
 		log.Errorf("failed to load outbox: got=%v", outbox)
 		http.Error(w, "Failed to load outbox", http.StatusNotFound)
@@ -381,12 +381,13 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Activity ID is unspecified", http.StatusBadRequest)
 		return
 	}
+	fetchReplies := strings.ToLower(r.URL.Query().Get("replies")) == "true"
 	activityID, err := url.Parse(activity)
 	if err != nil {
 		http.Error(w, "Activity ID is not a URL", http.StatusBadRequest)
 		return
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, activityID, false, 0)
+	object, err := s.Client.FetchRemoteObject(ctx, activityID, false, 0, fetchReplies)
 	if err != nil {
 		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
 		return
@@ -650,7 +651,7 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	for iter := orderedItems.Begin(); iter != orderedItems.End(); iter = iter.Next() {
 		switch {
 		case iter.IsActivityStreamsCreate():
-			s.Client.Note(ctx, iter.GetActivityStreamsNote(), 0)
+			s.Client.Note(ctx, iter.GetActivityStreamsNote(), 0, false)
 		case iter.IsActivityStreamsAnnounce():
 		}
 	}
@@ -1146,7 +1147,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if err != nil {
 		return err
 	}
-	if err := s.Client.Create(ctx, create, 0); err != nil {
+	if err := s.Client.Create(ctx, create, 0, false); err != nil {
 		return fmt.Errorf("failed to dereference Create Activity: got err=%v", err)
 	}
 	var inReplyTo *url.URL
@@ -1192,7 +1193,7 @@ func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest voca
 	if err != nil {
 		return err
 	}
-	if err := s.Client.Announce(ctx, announce, 0); err != nil {
+	if err := s.Client.Announce(ctx, announce, 0, false); err != nil {
 		return fmt.Errorf("failed to dereference Announce Activity: got err=%v", err)
 	}
 	for iter := announce.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
@@ -1243,7 +1244,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err := s.Datastore.AddActivityToActivities(ctx, accept, primitive.NewObjectID()); err != nil {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, followerID, false, 0)
+	object, err := s.Client.FetchRemoteObject(ctx, followerID, false, 0, false)
 	if err != nil {
 		return err
 	}
