@@ -511,7 +511,7 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 	next := firstPage.GetActivityStreamsNext()
 	log.Infof("%s Handling next page of replies to Note ID=%q", prefix, note.GetJSONLDId().Get().String())
 	if next == nil {
-		log.Infof("%s Cannot dereference replies on Note ID=%q as next=", prefix, note.GetJSONLDId().Get().String(), next)
+		log.Infof("%s Cannot dereference replies on Note ID=%q as next=%v", prefix, note.GetJSONLDId().Get().String(), next)
 		return nil
 	}
 	if next.IsIRI() {
