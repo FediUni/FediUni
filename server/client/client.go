@@ -538,7 +538,7 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 		case iter.IsIRI():
 			o, err := c.FetchRemoteObject(ctx, iter.GetIRI(), false, depth+1, false)
 			if err != nil {
-				return fmt.Errorf("failed to fetch reply ID=%q", reply.GetJSONLDId())
+				return fmt.Errorf("failed to fetch reply ID=%q", iter.GetIRI().String())
 			}
 			reply = o
 		default:
