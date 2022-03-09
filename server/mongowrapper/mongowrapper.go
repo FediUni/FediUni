@@ -491,6 +491,8 @@ func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.
 	m["recipient"] = strings.ToLower(username)
 	if inReplyTo != nil {
 		m["isReply"] = true
+	} else {
+		m["isReply"] = false
 	}
 	// If the hostname matches the activity was created locally.
 	m["isLocal"] = activity.GetJSONLDId().Get().Host == d.server.Host
