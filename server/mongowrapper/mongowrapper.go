@@ -472,7 +472,7 @@ func (d *Datastore) AddObjectsToActorInbox(ctx context.Context, objects []vocab.
 		if err != nil {
 			return err
 		}
-		m["recipient"] = userID
+		m["recipient"] = strings.ToLower(userID)
 		res, err := inbox.InsertOne(ctx, m)
 		if err != nil {
 			return err
@@ -488,7 +488,7 @@ func (d *Datastore) AddActivityToActorInbox(ctx context.Context, activity vocab.
 	if err != nil {
 		return err
 	}
-	m["recipient"] = username
+	m["recipient"] = strings.ToLower(username)
 	if inReplyTo != nil {
 		m["isReply"] = true
 	}
@@ -701,13 +701,13 @@ func (d *Datastore) GetActorInboxAsOrderedCollection(ctx context.Context, userna
 	var filter bson.D
 	if local {
 		filter = bson.D{
-			{"recipient", username},
+			{"recipient", strings.ToLower(username)},
 			{"isReply", false},
 			{"isLocal", local},
 		}
 	} else {
 		filter = bson.D{
-			{"recipient", username},
+			{"recipient", strings.ToLower(username)},
 			{"isReply", false},
 		}
 	}
@@ -754,7 +754,7 @@ func (d *Datastore) GetActorInbox(ctx context.Context, username string, minID st
 		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
 	}
 	filter := bson.M{
-		"recipient": username,
+		"recipient": strings.ToLower(username),
 		"isReply":   false,
 	}
 	if local {
