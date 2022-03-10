@@ -606,7 +606,7 @@ func (d *Datastore) GetActorOutboxAsOrderedCollection(ctx context.Context, usern
 	return outboxCollection, nil
 }
 
-// GetActorOutbox GetActorInbox paginates the inbox 20 activities at a time using IDs.
+// GetActorOutbox paginates the inbox 20 activities at a time using IDs.
 // ObjectIDs exceeding that maxID are ignored, and ObjectIDs under the min ID
 // are ignored.
 func (d *Datastore) GetActorOutbox(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {

@@ -122,6 +122,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	activitypubRouter.Post("/login", s.login)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow/status", s.checkFollowStatus)
+	activitypubRouter.Get("/instance", s.getInstanceInfo)
 
 	s.Router.Get("/.well-known/webfinger", s.Webfinger)
 	s.Router.Mount("/api", activitypubRouter)
@@ -1440,6 +1441,36 @@ func (s *Server) Webfinger(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 
 	w.Write(response)
+}
+
+type InstanceDetails struct {
+	// Name is the name of the current server, e.g Society or Club Name.
+	Name string
+	// Institute indicates the associated institute of the current society.
+	Institute string
+}
+
+func (s *Server) getInstanceInfo(w http.ResponseWriter, r *http.Request) {
+	name := viper.GetString("INSTANCE_NAME")
+	if name == "" {
+		log.Errorf("INSTANCE_NAME is undefined in config")
+	}
+	institute := viper.GetString("INSTITUTE_NAME")
+	if institute == "" {
+		log.Errorf("INSTITUTE_NAME is undefined in config")
+	}
+	details := &InstanceDetails{
+		Name:      name,
+		Institute: institute,
+	}
+	marshalledDetails, err := json.Marshal(details)
+	if err != nil {
+		http.Error(w, "Failed to retrieve instance details", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(marshalledDetails)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) readPrivateKey(actor string) (*rsa.PrivateKey, error) {
