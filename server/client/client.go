@@ -83,7 +83,7 @@ func NewClient(instance *url.URL, address string, password string) *Client {
 
 // FetchRemoteObject retrieves the resource located at the provided IRI.
 // The client makes use of caching but this can be overriden.
-func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdate bool, depth int8, dereferenceReplies bool) (vocab.Type, error) {
+func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdate bool, depth int, maxDepth int) (vocab.Type, error) {
 	prefix := fmt.Sprintf("(Depth = %d)", depth)
 	if iri == nil {
 		return nil, fmt.Errorf("failed to receive IRI: got=%v", iri)
@@ -132,7 +132,7 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 		if err != nil {
 			return nil, err
 		}
-		if err := c.Create(ctx, create, depth, dereferenceReplies); err != nil {
+		if err := c.Create(ctx, create, depth, maxDepth); err != nil {
 			return nil, err
 		}
 	case "Announce":
@@ -140,7 +140,7 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 		if err != nil {
 			return nil, err
 		}
-		if err := c.Announce(ctx, announce, depth, dereferenceReplies); err != nil {
+		if err := c.Announce(ctx, announce, depth, maxDepth); err != nil {
 			return nil, err
 		}
 	}
@@ -184,27 +184,12 @@ func (c *Client) FetchRemotePerson(ctx context.Context, identifier string) (voca
 	if err != nil {
 		return nil, err
 	}
-	actor, err := c.FetchRemoteObject(ctx, actorID, false, 0, false)
-	if err != nil {
-		return nil, err
-	}
-	var person vocab.ActivityStreamsPerson
-	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
-		person = p
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := resolver.Resolve(ctx, actor); err != nil {
-		return nil, err
-	}
-	return person, err
+	return c.FetchRemotePersonWithID(ctx, actorID)
 }
 
 // FetchRemotePersonWithID uses the provided ID to retrieve a Person.
 func (c *Client) FetchRemotePersonWithID(ctx context.Context, personID *url.URL) (vocab.ActivityStreamsPerson, error) {
-	actor, err := c.FetchRemoteObject(ctx, personID, false, 0, false)
+	actor, err := c.FetchRemoteObject(ctx, personID, false, 0, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +213,7 @@ func (c *Client) FetchRemoteActor(ctx context.Context, identifier string) (vocab
 	if err != nil {
 		return nil, err
 	}
-	return c.FetchRemoteObject(ctx, actorID, false, 0, false)
+	return c.FetchRemoteObject(ctx, actorID, false, 0, 1)
 }
 
 func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab.ActivityStreamsPerson, error) {
@@ -239,7 +224,7 @@ func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab
 	var followers vocab.Type
 	switch f := person.GetActivityStreamsFollowers(); {
 	case f.IsIRI():
-		followers, err = c.FetchRemoteObject(ctx, f.GetIRI(), false, 0, false)
+		followers, err = c.FetchRemoteObject(ctx, f.GetIRI(), false, 0, 1)
 		if err != nil {
 			return nil, err
 		}
@@ -268,7 +253,7 @@ func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab
 	for iter := orderedCollection.GetActivityStreamsOrderedItems().Begin(); iter != nil; iter = iter.Next() {
 		switch {
 		case iter.IsIRI():
-			o, err := c.FetchRemoteObject(ctx, iter.GetIRI(), false, 0, false)
+			o, err := c.FetchRemoteObject(ctx, iter.GetIRI(), false, 0, 1)
 			if err != nil {
 				log.Errorf("failed to fetch remote object: got err=%v", err)
 				continue
@@ -353,9 +338,11 @@ func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID str
 }
 
 // Create dereferences the actor and object fields of the activity.
-func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate, depth int8, dereferenceReplies bool) error {
-	if depth == 5 {
-		log.Infof("Depth = %d. Returning...", depth)
+func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate, depth int, maxDepth int) error {
+	prefix := fmt.Sprintf("(Depth = %d)", depth)
+	if depth > maxDepth {
+		log.Infof("%s Skipping dereferencing Create Activity ID=%q", prefix, create.GetJSONLDId().Get())
+		return nil
 	}
 	// Dereference all Actors of type Person in actor field.
 	for iter := create.GetActivityStreamsActor().Begin(); iter != nil; iter = iter.Next() {
@@ -377,7 +364,7 @@ func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate,
 			continue
 		}
 		objectID := iter.GetIRI()
-		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false, depth+1, dereferenceReplies)
+		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false, depth+1, maxDepth)
 		if err != nil {
 			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
 		}
@@ -387,7 +374,7 @@ func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate,
 			if err != nil {
 				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", objectID.String(), err)
 			}
-			if err := c.Note(ctx, note, depth+1, dereferenceReplies); err != nil {
+			if err := c.Note(ctx, note, depth+1, maxDepth); err != nil {
 				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", objectID.String(), err)
 			}
 			iter.SetActivityStreamsNote(note)
@@ -397,9 +384,11 @@ func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate,
 }
 
 // Announce dereferences the actor and object fields of the activity.
-func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnnounce, depth int8, dereferenceReplies bool) error {
-	if depth == 5 {
-		log.Infof("Depth = %d. Returning...", depth)
+func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnnounce, depth int, maxDepth int) error {
+	prefix := fmt.Sprintf("(Depth = %d)", depth)
+	if depth > maxDepth {
+		log.Infof("%s Skipping dereferencing Announce Activity ID=%q", prefix, announce.GetJSONLDId().Get())
+		return nil
 	}
 	for iter := announce.GetActivityStreamsActor().Begin(); iter != nil; iter = iter.Next() {
 		var actorID *url.URL
@@ -420,7 +409,7 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 			continue
 		}
 		objectID := iter.GetIRI()
-		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false, depth+1, dereferenceReplies)
+		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false, depth+1, maxDepth)
 		if err != nil {
 			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
 		}
@@ -430,7 +419,7 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 			if err != nil {
 				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", objectID.String(), err)
 			}
-			if err := c.Note(ctx, note, depth+1, dereferenceReplies); err != nil {
+			if err := c.Note(ctx, note, depth+1, maxDepth); err != nil {
 				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", objectID.String(), err)
 			}
 			iter.SetActivityStreamsNote(note)
@@ -440,10 +429,11 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 }
 
 // Note dereferences the actors of type Person in attributedTo.
-func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth int8, dereferenceReplies bool) error {
+func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth int, maxDepth int) error {
 	prefix := fmt.Sprintf("(Depth = %d)", depth)
-	if depth == 5 {
-		log.Infof("Depth = %d. Returning...", depth)
+	if depth > maxDepth {
+		log.Infof("%s Skipping dereferencing Note Object ID=%q", prefix, depth, note.GetJSONLDId().Get().String())
+		return nil
 	}
 	if note == nil {
 		return fmt.Errorf("error in dereferencing note: got note=%v", note)
@@ -455,7 +445,7 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 		switch {
 		case iter.IsIRI():
 			actorID := iter.GetIRI()
-			actorRetrieved, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, false)
+			actorRetrieved, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, maxDepth)
 			if err != nil {
 				return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID.String(), err)
 			}
@@ -476,8 +466,8 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 			iter.SetActivityStreamsPerson(person)
 		}
 	}
-	if !dereferenceReplies {
-		log.Errorf("%s Skipping dereferencing replies...", prefix)
+	if depth == maxDepth-1 {
+		log.Infof("%s Skipping replies to Note ID=%q", prefix, note.GetJSONLDId().Get().String())
 		return nil
 	}
 	log.Infof("%s Attempting to dereference replies on Note ID=%q", prefix, note.GetJSONLDId().Get().String())
@@ -492,76 +482,312 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 		return nil
 	}
 	log.Infof("Handling first page of replies to Note ID=%q", note.GetJSONLDId().Get().String())
+	// Dereference the first two pages by default to handle Mastodon replies.
+	if _, err := c.DereferenceObjectsInCollection(ctx, collection, 0, depth+1, maxDepth); err != nil {
+		log.Errorf("Failed to dereference replies to Note ID=%q: got err=%v", note.GetJSONLDId().Get().String(), err)
+	}
+	if _, err := c.DereferenceObjectsInCollection(ctx, collection, 1, depth+1, maxDepth); err != nil {
+		log.Errorf("Failed to dereference replies to Note ID=%q: got err=%v", note.GetJSONLDId().Get().String(), err)
+	}
+	return nil
+}
+
+// DereferenceObjectsInCollection retrieves items on the page and returns.
+// If page is 0 then only the first page is dereferences. If the page is
+// greater than the number of pages then
+func (c *Client) DereferenceObjectsInCollection(ctx context.Context, collection vocab.ActivityStreamsCollection, page, depth, maxDepth int) (vocab.ActivityStreamsCollectionPage, error) {
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
+	if depth > maxDepth {
+		log.Infof("%s Skipping dereferencing Collection Object ID=%q", prefix, depth, collection.GetJSONLDId().Get().String())
+		return nil, nil
+	}
+	if page < 0 {
+		return nil, fmt.Errorf("%s page cannot be less than 0: got page=%d", prefix, page)
+	}
+	if collection == nil {
+		return nil, fmt.Errorf("%s cannot dereference items on collection=%v", prefix, collection)
+	}
+	collectionID := collection.GetJSONLDId().Get()
+	if collectionID == nil {
+		return nil, fmt.Errorf("%s cannot dereference items on collection with ID=%v", prefix, collectionID)
+	}
+	log.Infof("%s Fetching first page of Collection ID=%q", prefix, collectionID.String())
 	first := collection.GetActivityStreamsFirst()
 	if first == nil {
-		log.Errorf("%s Cannot dereference replies on Note ID=%q as first page=%v", prefix, note.GetJSONLDId().Get().String(), first)
-		return nil
+		return nil, fmt.Errorf("%s Cannot dereference items on Collection ID=%q as first=%v", prefix, collectionID.String(), first)
 	}
 	if first.IsIRI() {
-		page, err := c.FetchRemoteObject(ctx, first.GetIRI(), false, depth+1, false)
+		firstID := first.GetIRI()
+		log.Infof("%s Dereferencing ID=%q of first field of Collection ID=%q", prefix, firstID.String(), collectionID.String())
+		page, err := c.FetchRemoteObject(ctx, firstID, false, depth+1, maxDepth)
 		if err != nil {
-			return fmt.Errorf("failed to fetch first page of replies collection")
+			return nil, fmt.Errorf("%s failed to fetch first field of Collection: got err=%v", prefix, err)
 		}
 		if err := first.SetType(page); err != nil {
-			return fmt.Errorf("failed to dereference first page of replies collection: got err=%v", err)
+			return nil, fmt.Errorf("%s failed to set first field of Collection: got err=%v", prefix, err)
 		}
 	}
+	log.Infof("%s Dereferencing first page of Collection=%q", prefix, collectionID.String())
 	firstPage := first.GetActivityStreamsCollectionPage()
-	// Retrieve top level replies for now.
-	next := firstPage.GetActivityStreamsNext()
-	log.Infof("%s Handling next page of replies to Note ID=%q", prefix, note.GetJSONLDId().Get().String())
-	if next == nil {
-		log.Infof("%s Cannot dereference replies on Note ID=%q as next=%v", prefix, note.GetJSONLDId().Get().String(), next)
-		return nil
+	if firstPage == nil {
+		return nil, fmt.Errorf("%s Cannot dereference items on Collection ID=%q as First Page=%v", prefix, collectionID.String(), firstPage)
 	}
-	if next.IsIRI() {
-		page, err := c.FetchRemoteObject(ctx, next.GetIRI(), false, depth+1, false)
-		if err != nil {
-			return fmt.Errorf("failed to fetch next page of replies collection")
+	log.Infof("%s Traversing the Collection ID=%q starting from First Page", prefix)
+	// Traverse next until the specified page is reached.
+	nextPage := firstPage
+	currentPage := firstPage
+	for i := 0; i < page; i++ {
+		current := nextPage.GetActivityStreamsNext()
+		if current == nil {
+			return nil, fmt.Errorf("%s cannot dereference page=%d as current page=%v", prefix, i, current)
 		}
-		if err := next.SetType(page); err != nil {
-			return fmt.Errorf("failed to dereference next page of replies collection: got err=%v", err)
+		switch {
+		case current.IsIRI():
+			page, err := c.FetchRemoteObject(ctx, current.GetIRI(), false, depth+1, maxDepth)
+			if err != nil {
+				return nil, fmt.Errorf("%s failed to fetch next page of items collection: got err=%v", prefix, err)
+			}
+			if err := current.SetType(page); err != nil {
+				return nil, fmt.Errorf("%s failed to dereference next page of items collection: got err=%v", prefix, err)
+			}
+		}
+		if current == nil {
+			return nil, fmt.Errorf("%s cannot dereference page=%d as current=%v", prefix, i, current)
+		}
+		currentPage = current.GetActivityStreamsCollectionPage()
+		if currentPage == nil {
+			return nil, fmt.Errorf("%s cannot dereference page=%d as current page=%v", prefix, i, currentPage)
+		}
+		next := currentPage.GetActivityStreamsNext()
+		if next == nil {
+			break
+		}
+		nextPage = next.GetActivityStreamsCollectionPage()
+		if nextPage == nil {
+			break
 		}
 	}
-	nextPage := next.GetActivityStreamsCollectionPage()
-	if nextPage == nil {
-		return nil
-	}
-	items := nextPage.GetActivityStreamsItems()
+	log.Infof("%s Finished traversing the pages: dereferencing Page=%d", prefix, page)
+	// Dereference the items in the current page.
+	items := currentPage.GetActivityStreamsItems()
 	if items == nil {
-		log.Infof("%s No items to dereference", prefix)
-		return nil
+		return nil, fmt.Errorf("%s No items to dereference", prefix)
 	}
+	log.Infof("%s Dereferencing items in Page=%d", prefix, page)
+	itemsDereferenced := 0
 	for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
-		var reply vocab.Type
+		var item vocab.Type
 		switch {
 		case iter.IsIRI():
-			o, err := c.FetchRemoteObject(ctx, iter.GetIRI(), false, depth+1, false)
+			itemID := iter.GetIRI()
+			log.Infof("%s Dereferencing Item ID = %q", prefix, itemID.String())
+			o, err := c.FetchRemoteObject(ctx, itemID, false, depth+1, maxDepth)
 			if err != nil {
-				return fmt.Errorf("failed to fetch reply ID=%q", iter.GetIRI().String())
+				return nil, fmt.Errorf("failed to fetch object ID=%q", iter.GetIRI().String())
 			}
-			reply = o
+			item = o
 		default:
-			reply = iter.GetType()
+			item = iter.GetType()
 		}
-		if reply == nil {
+		if item == nil {
 			continue
 		}
-		switch reply.GetTypeName() {
-		case "Note":
-			n, err := object.ParseNote(ctx, reply)
+		switch item.GetTypeName() {
+		case "Create":
+			log.Infof("Parsing Create ID=%q", item.GetJSONLDId().Get().String())
+			create, err := activity.ParseCreateActivity(ctx, item)
 			if err != nil {
-				log.Errorf("failed to parse note: got err=%v", err)
+				return nil, err
+			}
+			if err := c.Create(ctx, create, depth, maxDepth); err != nil {
+				log.Errorf("%s Failed to dereference Create Activity ID=%q: got err=%v", prefix, create.GetJSONLDId().Get(), err)
 				continue
 			}
-			if err := c.Note(ctx, n, depth+1, false); err != nil {
+			if err := iter.SetType(create); err != nil {
+				log.Errorf("%s Failed to set Create Activity ID=%q as type: got err=%v", prefix, create.GetJSONLDId().Get(), err)
+				continue
+			}
+		case "Announce":
+			log.Infof("Parsing Announce ID=%q", item.GetJSONLDId().Get().String())
+			announce, err := activity.ParseAnnounceActivity(ctx, item)
+			if err != nil {
+				return nil, err
+			}
+			if err := c.Announce(ctx, announce, depth, maxDepth); err != nil {
+				log.Errorf("%s Failed to dereference Announce Activity ID=%q: got err=%v", prefix, announce.GetJSONLDId().Get(), err)
+				continue
+			}
+			if err := iter.SetType(announce); err != nil {
+				log.Errorf("%s Failed to set Create Announce ID=%q as type: got err=%v", prefix, announce.GetJSONLDId().Get(), err)
+				continue
+			}
+		case "Note":
+			log.Infof("Parsing Note ID=%q", item.GetJSONLDId().Get().String())
+			n, err := object.ParseNote(ctx, item)
+			if err != nil {
+				log.Errorf("%s failed to parse note: got err=%v", prefix, err)
+				continue
+			}
+			if err := c.Note(ctx, n, depth+1, maxDepth); err != nil {
 				log.Errorf("failed to dereference note: got err=%v", err)
 				continue
 			}
 			if err := iter.SetType(n); err != nil {
-				return fmt.Errorf("failed to dereference reply: got err=%v", err)
+				log.Errorf("%s failed to dereference item: got err=%v", prefix, err)
+				continue
 			}
 		}
+		itemsDereferenced++
 	}
-	return nil
+	log.Infof("%s Dereferenced %d items", prefix, itemsDereferenced)
+	return currentPage, nil
+}
+
+// DereferenceObjectsInOrderedCollection retrieves items on the specified page.
+// If page is 0 then only the first page is dereferences. If the page is
+// greater than the number of pages then
+func (c *Client) DereferenceObjectsInOrderedCollection(ctx context.Context, collection vocab.ActivityStreamsOrderedCollection, page, depth, maxDepth int) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
+	if depth > maxDepth {
+		log.Infof("%s Skipping dereferencing OrderedCollection Object ID=%q", prefix, depth, collection.GetJSONLDId().Get().String())
+		return nil, nil
+	}
+	if page < 0 {
+		return nil, fmt.Errorf("%s page cannot be less than 0: got page=%d", prefix, page)
+	}
+	if collection == nil {
+		return nil, fmt.Errorf("%s cannot dereference items on collection=%v", prefix, collection)
+	}
+	collectionID := collection.GetJSONLDId().Get()
+	if collectionID == nil {
+		return nil, fmt.Errorf("%s cannot dereference items on collection with ID=%v", prefix, collectionID)
+	}
+	log.Infof("%s Fetching first page of OrderedCollection ID=%q", prefix, collectionID.String())
+	first := collection.GetActivityStreamsFirst()
+	if first == nil {
+		return nil, fmt.Errorf("%s Cannot dereference items on Collection ID=%q as first=%v", prefix, collectionID.String(), first)
+	}
+	if first.IsIRI() {
+		firstID := first.GetIRI()
+		log.Infof("%s Dereferencing ID=%q of first field of OrderedCollection ID=%q", prefix, firstID.String(), collectionID.String())
+		page, err := c.FetchRemoteObject(ctx, firstID, false, depth+1, maxDepth)
+		if err != nil {
+			return nil, fmt.Errorf("%s failed to fetch first field of OrderedCollection: got err=%v", prefix, err)
+		}
+		if err := first.SetType(page); err != nil {
+			return nil, fmt.Errorf("%s failed to set first field of OrderedCollection: got err=%v", prefix, err)
+		}
+	}
+	log.Infof("%s Dereferencing First Page of OrderedCollection=%q", prefix, collectionID.String())
+	firstPage := first.GetActivityStreamsOrderedCollectionPage()
+	if firstPage == nil {
+		return nil, fmt.Errorf("%s Cannot dereference items on OrderedCollection ID=%q as first page=%v", prefix, collectionID.String(), first)
+	}
+	log.Infof("%s Traversing the OrderedCollection ID=%q starting from First Page ID=%q", prefix, collectionID.String(), firstPage.GetJSONLDId().Get().String())
+	// Traverse next until the specified page is reached.
+	nextPage := firstPage
+	currentPage := firstPage
+	for i := 0; i < page; i++ {
+		current := nextPage.GetActivityStreamsNext()
+		if current == nil {
+			return nil, fmt.Errorf("%s cannot dereference page=%d as current page=%v", prefix, i, current)
+		}
+		switch {
+		case current.IsIRI():
+			page, err := c.FetchRemoteObject(ctx, current.GetIRI(), false, depth+1, maxDepth)
+			if err != nil {
+				return nil, fmt.Errorf("%s failed to fetch next page of OrderedItems: got err=%v", prefix, err)
+			}
+			if err := current.SetType(page); err != nil {
+				return nil, fmt.Errorf("%s failed to dereference next page of OrderedItems: got err=%v", prefix, err)
+			}
+		}
+		if current == nil {
+			return nil, fmt.Errorf("%s cannot dereference page=%d as current=%v", prefix, i, current)
+		}
+		currentPage = current.GetActivityStreamsOrderedCollectionPage()
+		if currentPage == nil {
+			return nil, fmt.Errorf("%s cannot dereference page=%d as current page=%v", prefix, i, currentPage)
+		}
+		next := currentPage.GetActivityStreamsNext()
+		if next == nil {
+			break
+		}
+		nextPage = next.GetActivityStreamsOrderedCollectionPage()
+		if nextPage == nil {
+			break
+		}
+	}
+	log.Infof("%s Finished traversing the pages: dereferencing Page ID=%q", prefix, currentPage.GetJSONLDId().Get())
+	// Dereference the items in the current page.
+	items := currentPage.GetActivityStreamsOrderedItems()
+	if items == nil {
+		return nil, fmt.Errorf("%s No items to dereference", prefix)
+	}
+	log.Infof("%s Dereferencing items in Page ID=%q", prefix, currentPage.GetJSONLDId().Get())
+	itemsDereferenced := 0
+	for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+		var item vocab.Type
+		switch {
+		case iter.IsIRI():
+			itemID := iter.GetIRI()
+			log.Infof("%s Dereferencing Item ID = %q", prefix, itemID.String())
+			o, err := c.FetchRemoteObject(ctx, itemID, false, depth+1, maxDepth)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch object ID=%q", iter.GetIRI().String())
+			}
+			item = o
+		default:
+			item = iter.GetType()
+		}
+		if item == nil {
+			continue
+		}
+		switch item.GetTypeName() {
+		case "Create":
+			log.Infof("Parsing Create ID=%q", item.GetJSONLDId().Get().String())
+			create, err := activity.ParseCreateActivity(ctx, item)
+			if err != nil {
+				return nil, err
+			}
+			if err := c.Create(ctx, create, depth, maxDepth); err != nil {
+				return nil, err
+			}
+			if err := iter.SetType(create); err != nil {
+				log.Errorf("%s failed to dereference item: got err=%v", prefix, err)
+				continue
+			}
+		case "Announce":
+			log.Infof("Parsing Announce ID=%q", item.GetJSONLDId().Get().String())
+			announce, err := activity.ParseAnnounceActivity(ctx, item)
+			if err != nil {
+				return nil, err
+			}
+			if err := c.Announce(ctx, announce, depth, maxDepth); err != nil {
+				return nil, err
+			}
+			if err := iter.SetType(announce); err != nil {
+				log.Errorf("%s failed to dereference item: got err=%v", prefix, err)
+				continue
+			}
+		case "Note":
+			log.Infof("Parsing Note ID=%q", item.GetJSONLDId().Get().String())
+			n, err := object.ParseNote(ctx, item)
+			if err != nil {
+				log.Errorf("%s failed to parse note: got err=%v", prefix, err)
+				continue
+			}
+			if err := c.Note(ctx, n, depth+1, maxDepth); err != nil {
+				log.Errorf("failed to dereference note: got err=%v", err)
+				continue
+			}
+			if err := iter.SetType(n); err != nil {
+				log.Errorf("%s failed to dereference item: got err=%v", prefix, err)
+				continue
+			}
+			itemsDereferenced++
+		}
+	}
+	log.Infof("%s Dereferenced %d items", prefix, itemsDereferenced)
+	return currentPage, nil
 }

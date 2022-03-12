@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"github.com/FediUni/FediUni/server/object"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -204,33 +205,21 @@ func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	identifier := r.URL.Query().Get("identifier")
 	if identifier == "" {
 		log.Errorf("failed to receive identifier: got=%q", identifier)
 		http.Error(w, "Failed to receive an actor identifier", http.StatusBadRequest)
 		return
 	}
-	actor, err := s.Client.FetchRemoteActor(r.Context(), identifier)
+	person, err := s.Client.FetchRemotePerson(r.Context(), identifier)
 	if err != nil {
 		log.Errorf("failed to fetch a remote actor=%q: got err=%v", identifier, err)
 		http.Error(w, "Failed to load actor", http.StatusNotFound)
 		return
 	}
-	var person vocab.ActivityStreamsPerson
-	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
-		person = p
-		return nil
-	})
-	if err != nil {
-		log.Errorf("failed to create Actor Resolver: got err=%v", err)
-		http.Error(w, "Failed to load actor", http.StatusNotFound)
-		return
-	}
-	if err := resolver.Resolve(r.Context(), actor); err != nil {
-		log.Errorf("failed to resolve Actor: got err=%v", err)
-		http.Error(w, "Failed to load actor", http.StatusNotFound)
-		return
-	}
+	personID := person.GetJSONLDId().Get()
+	log.Infof("Loading outbox of actor ID=%q", person.GetJSONLDId().Get().String())
 	outbox := person.GetActivityStreamsOutbox()
 	if outbox == nil {
 		log.Errorf("failed to load outbox: got=%v", outbox)
@@ -243,39 +232,29 @@ func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load outbox", http.StatusNotFound)
 		return
 	}
-	// TODO(Jared-Mullin): We should define a function that loads the
-	// OrderedCollection and then the OrderedCollectionPage rather than guessing
-	// ?page=true will always hold for outbox.
-	outboxPageIRI, err := url.Parse(fmt.Sprintf("%s?page=true", outboxIRI.String()))
+	log.Infof("Fetching outbox collection of actor ID=%q", personID.String())
+	o, err := s.Client.FetchRemoteObject(ctx, outboxIRI, false, 0, 1)
+	orderedCollection, err := object.ParseOrderedCollection(ctx, o)
 	if err != nil {
-		log.Errorf("failed to load parse outbox URL: got=%v", outboxIRI)
+		log.Errorf("failed to parse OrderedCollection: got err=%v", err)
 		http.Error(w, "Failed to load outbox", http.StatusNotFound)
 		return
 	}
-	outboxPage, err := s.Client.FetchRemoteObject(r.Context(), outboxPageIRI, false, 0, false)
+	log.Infof("Dereferencing outbox collection ID=%q of actor ID=%q", outboxIRI.String(), personID.String())
+	page, err := s.Client.DereferenceObjectsInOrderedCollection(ctx, orderedCollection, 0, 0, 1)
 	if err != nil {
-		log.Errorf("failed to load outbox: got=%v", outbox)
+		log.Errorf("failed to dereference OrderedCollection: got err=%v", err)
 		http.Error(w, "Failed to load outbox", http.StatusNotFound)
 		return
 	}
-	var page vocab.ActivityStreamsOrderedCollectionPage
-	resolver, err = streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsOrderedCollectionPage) error {
-		page = p
-		return nil
-	})
-	if err != nil {
-		log.Errorf("failed to create type resolver: got err=%v", err)
-		http.Error(w, "Failed to load outbox", http.StatusNotFound)
-		return
-	}
-	if err := resolver.Resolve(r.Context(), outboxPage); err != nil {
-		log.Errorf("failed to resolve %v: got err=%v", outboxPage, err)
+	if page == nil {
+		log.Errorf("page of OrderedCollection=%v", page)
 		http.Error(w, "Failed to load outbox", http.StatusNotFound)
 		return
 	}
 	m, err := streams.Serialize(page)
 	if err != nil {
-		log.Errorf("failed to serialize %v: got err=%v", outboxPage, err)
+		log.Errorf("failed to serialize %v: got err=%v", page, err)
 		http.Error(w, "Failed to load outbox", http.StatusNotFound)
 		return
 	}
@@ -287,7 +266,6 @@ func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.Write(serializedOutbox)
-	return
 }
 
 func (s *Server) getFollowers(w http.ResponseWriter, r *http.Request) {
@@ -382,13 +360,16 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Activity ID is unspecified", http.StatusBadRequest)
 		return
 	}
-	fetchReplies := strings.ToLower(r.URL.Query().Get("replies")) == "true"
 	activityID, err := url.Parse(activity)
 	if err != nil {
 		http.Error(w, "Activity ID is not a URL", http.StatusBadRequest)
 		return
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, activityID, false, 0, fetchReplies)
+	maxDepth := 1
+	if strings.ToLower(r.URL.Query().Get("replies")) == "true" {
+		maxDepth += 2
+	}
+	object, err := s.Client.FetchRemoteObject(ctx, activityID, false, 0, maxDepth)
 	if err != nil {
 		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
 		return
@@ -659,7 +640,7 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	for iter := orderedItems.Begin(); iter != orderedItems.End(); iter = iter.Next() {
 		switch {
 		case iter.IsActivityStreamsCreate():
-			s.Client.Note(ctx, iter.GetActivityStreamsNote(), 0, false)
+			s.Client.Note(ctx, iter.GetActivityStreamsNote(), 0, 2)
 		case iter.IsActivityStreamsAnnounce():
 		}
 	}
@@ -1155,7 +1136,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 	if err != nil {
 		return err
 	}
-	if err := s.Client.Create(ctx, create, 0, false); err != nil {
+	if err := s.Client.Create(ctx, create, 0, 2); err != nil {
 		return fmt.Errorf("failed to dereference Create Activity: got err=%v", err)
 	}
 	var inReplyTo *url.URL
@@ -1201,7 +1182,7 @@ func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest voca
 	if err != nil {
 		return err
 	}
-	if err := s.Client.Announce(ctx, announce, 0, false); err != nil {
+	if err := s.Client.Announce(ctx, announce, 0, 2); err != nil {
 		return fmt.Errorf("failed to dereference Announce Activity: got err=%v", err)
 	}
 	for iter := announce.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
@@ -1252,7 +1233,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err := s.Datastore.AddActivityToActivities(ctx, accept, primitive.NewObjectID()); err != nil {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, followerID, false, 0, false)
+	object, err := s.Client.FetchRemoteObject(ctx, followerID, false, 0, 2)
 	if err != nil {
 		return err
 	}

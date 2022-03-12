@@ -21,3 +21,18 @@ func ParseNote(ctx context.Context, object vocab.Type) (vocab.ActivityStreamsNot
 	}
 	return note, nil
 }
+
+func ParseOrderedCollection(ctx context.Context, object vocab.Type) (vocab.ActivityStreamsOrderedCollection, error) {
+	var orderedCollection vocab.ActivityStreamsOrderedCollection
+	orderedCollectionResolver, err := streams.NewTypeResolver(func(ctx context.Context, o vocab.ActivityStreamsOrderedCollection) error {
+		orderedCollection = o
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := orderedCollectionResolver.Resolve(ctx, object); err != nil {
+		return nil, err
+	}
+	return orderedCollection, nil
+}
