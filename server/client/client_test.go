@@ -56,7 +56,7 @@ func TestFetchRemoteObject(t *testing.T) {
 			if err != nil {
 				t.Errorf("failed to parse key=%q: got err=%v", test.key, err)
 			}
-			object, err := client.FetchRemoteObject(context.Background(), iri, false, 0, false)
+			object, err := client.FetchRemoteObject(context.Background(), iri, false, 0, 1)
 			if err != nil {
 				t.Errorf("client.FetchRemoteObject(): failed to fetch remote object: got err=%v", err)
 			}
@@ -148,7 +148,7 @@ func TestCreate(t *testing.T) {
 			if err != nil {
 				t.Errorf("failed to parse key=%q: got err=%v", test.key, err)
 			}
-			object, err := client.FetchRemoteObject(context.Background(), iri, false, 0, false)
+			object, err := client.FetchRemoteObject(context.Background(), iri, false, 0, 1)
 			if err != nil {
 				t.Errorf("client.FetchRemoteObject(): failed to fetch remote object: got err=%v", err)
 			}

@@ -432,7 +432,7 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth int, maxDepth int) error {
 	prefix := fmt.Sprintf("(Depth = %d)", depth)
 	if depth > maxDepth {
-		log.Infof("%s Skipping dereferencing Note Object ID=%q", prefix, depth, note.GetJSONLDId().Get().String())
+		log.Infof("%s Skipping dereferencing Note Object ID=%q", prefix, note.GetJSONLDId().Get().String())
 		return nil
 	}
 	if note == nil {
@@ -498,7 +498,7 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 func (c *Client) DereferenceObjectsInCollection(ctx context.Context, collection vocab.ActivityStreamsCollection, page, depth, maxDepth int) (vocab.ActivityStreamsCollectionPage, error) {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if depth > maxDepth {
-		log.Infof("%s Skipping dereferencing Collection Object ID=%q", prefix, depth, collection.GetJSONLDId().Get().String())
+		log.Infof("%s Skipping dereferencing Collection Object ID=%q", prefix, collection.GetJSONLDId().Get().String())
 		return nil, nil
 	}
 	if page < 0 {
@@ -532,7 +532,7 @@ func (c *Client) DereferenceObjectsInCollection(ctx context.Context, collection 
 	if firstPage == nil {
 		return nil, fmt.Errorf("%s Cannot dereference items on Collection ID=%q as First Page=%v", prefix, collectionID.String(), firstPage)
 	}
-	log.Infof("%s Traversing the Collection ID=%q starting from First Page", prefix)
+	log.Infof("%s Traversing the Collection ID=%q starting from First Page", prefix, collectionID.String())
 	// Traverse next until the specified page is reached.
 	nextPage := firstPage
 	currentPage := firstPage
@@ -649,7 +649,7 @@ func (c *Client) DereferenceObjectsInCollection(ctx context.Context, collection 
 func (c *Client) DereferenceObjectsInOrderedCollection(ctx context.Context, collection vocab.ActivityStreamsOrderedCollection, page, depth, maxDepth int) (vocab.ActivityStreamsOrderedCollectionPage, error) {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if depth > maxDepth {
-		log.Infof("%s Skipping dereferencing OrderedCollection Object ID=%q", prefix, depth, collection.GetJSONLDId().Get().String())
+		log.Infof("%s Skipping dereferencing OrderedCollection Object ID=%q", prefix, collection.GetJSONLDId().Get().String())
 		return nil, nil
 	}
 	if page < 0 {
