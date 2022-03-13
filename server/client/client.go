@@ -122,7 +122,7 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 	}
 	var m map[string]interface{}
 	if err := json.Unmarshal(marshalledObject, &m); err != nil {
-		log.Infof("%s Storing ObjectID=%q in cache...", prefix, iri.String())
+		log.Infof("%s Failed to unmarshal Object ID=%q: got err=%v", prefix, iri.String(), err)
 		return nil, err
 	}
 	object, err := streams.ToType(ctx, m)
