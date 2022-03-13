@@ -27,7 +27,8 @@ import (
 const (
 	cacheTime = 10 * time.Minute
 	// Limit the number of simultaneous collection item dereferences.
-	limit = 10
+	limit             = 10
+	activityPubAccept = `application/ld+json; profile="https://www.w3.org/ns/activitystreams"`
 )
 
 type WebfingerResponse struct {
@@ -285,7 +286,8 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/ld+json")
+	req.Header.Set("Content-Type", activityPubAccept)
+	req.Header.Set("Accept", activityPubAccept)
 	log.Infof("Signing Request...")
 	req, err = validation.SignRequestWithDigest(req, c.InstanceURL, keyID, privateKey, marshalledActivity)
 	if err != nil {
