@@ -107,7 +107,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	}))
 
 	activitypubRouter := chi.NewRouter()
-	activitypubRouter.Get("/actor", s.getAnyActor)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor", s.getAnyActor)
 	activitypubRouter.Get("/actor/{username}", s.getActor)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/outbox", s.getAnyActorOutbox)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/inbox", s.getPublicInbox)
@@ -176,6 +176,12 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	_, _, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
 	identifier := r.URL.Query().Get("identifier")
 	if identifier == "" {
 		log.Errorf("failed to receive identifier: got=%q", identifier)
@@ -206,6 +212,12 @@ func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	_, _, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
 	identifier := r.URL.Query().Get("identifier")
 	if identifier == "" {
 		log.Errorf("failed to receive identifier: got=%q", identifier)
@@ -356,6 +368,12 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 // GetAnyActivity fetches the remote Activity and forces an update.
 func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	_, _, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
 	activity := r.URL.Query().Get("id")
 	if activity == "" {
 		http.Error(w, "Activity ID is unspecified", http.StatusBadRequest)
