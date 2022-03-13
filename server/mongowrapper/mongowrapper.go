@@ -858,3 +858,43 @@ func (d *Datastore) GetFollowerStatus(ctx context.Context, followerID, followedI
 	}
 	return 2, nil
 }
+
+func (d *Datastore) DeleteObjectFromAllInboxes(ctx context.Context, objectID *url.URL) error {
+	if err := d.DeleteObjectFromPublicInbox(ctx, objectID); err != nil {
+		return fmt.Errorf("failed to delete object from public inbox: got err=%v", err)
+	}
+	if err := d.DeleteObjectFromInbox(ctx, objectID); err != nil {
+		return fmt.Errorf("failed to delete object from inbox: got err=%v", err)
+	}
+	return nil
+}
+
+func (d *Datastore) DeleteObjectFromPublicInbox(ctx context.Context, objectID *url.URL) error {
+	public := d.client.Database("FediUni").Collection("publicInbox")
+	res, err := public.DeleteMany(ctx, bson.D{
+		{"$or", bson.A{
+			bson.M{"id": objectID.String()},
+			bson.M{"object.id": objectID}},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete object from public inbox: got err=%v", err)
+	}
+	log.Infof("Deleted %d documents from Public Inbox", res.DeletedCount)
+	return nil
+}
+
+func (d *Datastore) DeleteObjectFromInbox(ctx context.Context, objectID *url.URL) error {
+	inbox := d.client.Database("FediUni").Collection("inbox")
+	res, err := inbox.DeleteMany(ctx, bson.D{
+		{"$or", bson.A{
+			bson.M{"id": objectID.String()},
+			bson.M{"object.id": objectID}},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete object from public inbox: got err=%v", err)
+	}
+	log.Infof("Deleted %d documents from Public Inbox", res.DeletedCount)
+	return nil
+}

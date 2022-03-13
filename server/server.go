@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/FediUni/FediUni/server/object"
+	"github.com/google/go-cmp/cmp"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -60,8 +61,9 @@ type Datastore interface {
 	AddActivityToPublicInbox(context.Context, vocab.Type, primitive.ObjectID, bool) error
 	GetPublicInbox(context.Context, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetPublicInboxAsOrderedCollection(context.Context, bool) (vocab.ActivityStreamsOrderedCollection, error)
-	AddReplyToActivity(context.Context, vocab.Type, *url.URL) error
+	DeleteObjectFromAllInboxes(context.Context, *url.URL) error
 }
+
 type Server struct {
 	URL          *url.URL
 	Router       *chi.Mux
@@ -1344,15 +1346,30 @@ func (s *Server) delete(ctx context.Context, activityRequest vocab.Type) error {
 	if object == nil {
 		return fmt.Errorf("failed to receive Object in Delete activity body: got %v", object)
 	}
+	var objectID *url.URL
 	for iter := object.Begin(); iter != nil; iter = iter.Next() {
 		switch {
 		case iter.IsIRI():
-			log.Infof("Failed to delete object=%q", iter.GetIRI().String())
+			objectID = iter.GetIRI()
 		default:
-			log.Infof("Failed to delete object=%v", iter)
+			o := iter.GetType()
+			if o == nil {
+				return fmt.Errorf("failed to delete object: object=%v", o)
+			}
+			objectID = o.GetJSONLDId().Get()
 		}
 	}
-	return fmt.Errorf("Delete support is unimplemented")
+	deleteID := deleteActivity.GetJSONLDId().Get()
+	if deleteID == nil {
+		return fmt.Errorf("failed to receive an ID in Delete Activity: got err=%v", err)
+	}
+	if d := cmp.Diff(deleteID.Host, objectID.Host); d != "" {
+		return fmt.Errorf("mismatch in ids: (+got -want) %s", d)
+	}
+	if err := s.Datastore.DeleteObjectFromAllInboxes(ctx, deleteID); err != nil {
+		return fmt.Errorf("failed to remove object: got err=%v", err)
+	}
+	return nil
 }
 
 func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) error {
