@@ -241,7 +241,7 @@ func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Infof("Dereferencing outbox collection ID=%q of actor ID=%q", outboxIRI.String(), personID.String())
-	page, err := s.Client.DereferenceObjectsInOrderedCollection(ctx, orderedCollection, 0, 0, 1)
+	page, err := s.Client.DereferenceObjectsInOrderedCollection(ctx, orderedCollection, 0, 0, 3)
 	if err != nil {
 		log.Errorf("failed to dereference OrderedCollection: got err=%v", err)
 		http.Error(w, "Failed to load outbox", http.StatusNotFound)

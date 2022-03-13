@@ -36,3 +36,18 @@ func ParseOrderedCollection(ctx context.Context, object vocab.Type) (vocab.Activ
 	}
 	return orderedCollection, nil
 }
+
+func ParseCollection(ctx context.Context, object vocab.Type) (vocab.ActivityStreamsCollection, error) {
+	var collection vocab.ActivityStreamsCollection
+	collectionResolver, err := streams.NewTypeResolver(func(ctx context.Context, c vocab.ActivityStreamsCollection) error {
+		collection = c
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := collectionResolver.Resolve(ctx, object); err != nil {
+		return nil, err
+	}
+	return collection, nil
+}
