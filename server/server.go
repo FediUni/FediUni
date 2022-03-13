@@ -246,6 +246,11 @@ func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Infof("Fetching outbox collection of actor ID=%q", personID.String())
 	o, err := s.Client.FetchRemoteObject(ctx, outboxIRI, false, 0, 1)
+	if err != nil {
+		log.Errorf("Failed to fetch remote object: got err=%v", err)
+		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		return
+	}
 	orderedCollection, err := object.ParseOrderedCollection(ctx, o)
 	if err != nil {
 		log.Errorf("failed to parse OrderedCollection: got err=%v", err)
