@@ -91,7 +91,7 @@ func NewClient(instance *url.URL, address string, password string) *Client {
 // FetchRemoteObject retrieves the resource located at the provided IRI.
 // The client makes use of caching but this can be overriden.
 func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdate bool, depth int, maxDepth int) (vocab.Type, error) {
-	prefix := fmt.Sprintf("(Depth = %d)", depth)
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if iri == nil {
 		return nil, fmt.Errorf("failed to receive IRI: got=%v", iri)
 	}
@@ -347,7 +347,7 @@ func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID str
 
 // Create dereferences the actor and object fields of the activity.
 func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate, depth int, maxDepth int) error {
-	prefix := fmt.Sprintf("(Depth = %d)", depth)
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if depth > maxDepth {
 		log.Infof("%s Skipping dereferencing Create Activity ID=%q", prefix, create.GetJSONLDId().Get())
 		return nil
@@ -393,7 +393,7 @@ func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate,
 
 // Announce dereferences the actor and object fields of the activity.
 func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnnounce, depth int, maxDepth int) error {
-	prefix := fmt.Sprintf("(Depth = %d)", depth)
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if depth > maxDepth {
 		log.Infof("%s Skipping dereferencing Announce Activity ID=%q", prefix, announce.GetJSONLDId().Get())
 		return nil
@@ -438,7 +438,7 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 
 // Note dereferences the actors of type Person in attributedTo.
 func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth int, maxDepth int) error {
-	prefix := fmt.Sprintf("(Depth = %d)", depth)
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if note == nil {
 		return fmt.Errorf("error in dereferencing note: got note=%v", note)
 	}
@@ -657,20 +657,23 @@ func (c *Client) DereferenceObjectsInOrderedCollection(ctx context.Context, coll
 			return nil, fmt.Errorf("%s failed to set first field of OrderedCollection: got err=%v", prefix, err)
 		}
 	}
-	log.Infof("%s Dereferencing First Page of OrderedCollection=%q", prefix, collectionID.String())
+	if first.IsIRI() {
+		firstID := first.GetIRI()
+		log.Infof("%s Dereferencing ID=%q of first field of OrderedCollection ID=%q", prefix, firstID.String(), collectionID.String())
+		page, err := c.FetchRemoteObject(ctx, firstID, false, depth+1, maxDepth)
+		if err != nil {
+			return nil, fmt.Errorf("%s failed to fetch first field of OrderedCollection: got err=%v", prefix, err)
+		}
+		if err := first.SetType(page); err != nil {
+			return nil, fmt.Errorf("%s failed to set first field of OrderedCollection: got err=%v", prefix, err)
+		}
+	}
+	log.Infof("%s Dereferencing first page of Collection=%q", prefix, collectionID.String())
 	firstPage := first.GetActivityStreamsOrderedCollectionPage()
 	if firstPage == nil {
-		return nil, fmt.Errorf("%s Cannot dereference items on OrderedCollection ID=%q as first page=%v", prefix, collectionID.String(), first)
+		return nil, fmt.Errorf("%s Cannot dereference items on OrderedCollection ID=%q as First Page=%v", prefix, collectionID.String(), firstPage)
 	}
-	firstPageIDProperty := firstPage.GetJSONLDId()
-	if firstPageIDProperty == nil {
-		return nil, fmt.Errorf("%s Cannot dereference items on OrderedCollection ID=%q as first page ID property=%v", prefix, collectionID.String(), firstPageIDProperty)
-	}
-	firstPageID := firstPageIDProperty.Get()
-	if firstPageID == nil {
-		return nil, fmt.Errorf("%s Cannot dereference items on OrderedCollection ID=%q as first page ID=%v", prefix, collectionID.String(), firstPageID)
-	}
-	log.Infof("%s Traversing the OrderedCollection ID=%q starting from First Page ID=%q", prefix, collectionID.String(), firstPageID.String())
+	log.Infof("%s Traversing the Collection ID=%q starting from First Page", prefix, collectionID.String())
 	// Traverse next until the specified page is reached.
 	nextPage := firstPage
 	currentPage := firstPage
@@ -705,7 +708,7 @@ func (c *Client) DereferenceObjectsInOrderedCollection(ctx context.Context, coll
 			break
 		}
 	}
-	log.Infof("%s Finished traversing the pages: dereferencing Page ID=%q", prefix, currentPage.GetJSONLDId().Get())
+	log.Infof("%s Finished traversing the pages", prefix)
 	// Dereference the items in the current page.
 	items := currentPage.GetActivityStreamsOrderedItems()
 	if items == nil {
