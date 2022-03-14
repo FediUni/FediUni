@@ -27,8 +27,11 @@ import (
 const (
 	cacheTime = 10 * time.Minute
 	// Limit the number of simultaneous collection item dereferences.
-	limit             = 10
-	activityPubAccept = `application/ld+json; profile="https://www.w3.org/ns/activitystreams"`
+	limit = 10
+	// Must be set on GET and POST requests to inboxes, outboxes, etc.
+	// https://www.w3.org/TR/activitypub/#retrieving-objects
+	// https://www.w3.org/TR/activitypub/#server-to-server-interactions
+	activitypubType = `application/ld+json; profile="https://www.w3.org/ns/activitystreams"`
 )
 
 type WebfingerResponse struct {
@@ -106,7 +109,7 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Accept", "application/activity+json")
+		req.Header.Set("Accept", activitypubType)
 		log.Infof("%s Fetching resource at ID=%q", prefix, iri.String())
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -286,8 +289,8 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", activityPubAccept)
-	req.Header.Set("Accept", activityPubAccept)
+	req.Header.Set("Content-Type", activitypubType)
+	req.Header.Set("Accept", activitypubType)
 	log.Infof("Signing Request...")
 	req, err = validation.SignRequestWithDigest(req, c.InstanceURL, keyID, privateKey, marshalledActivity)
 	if err != nil {
