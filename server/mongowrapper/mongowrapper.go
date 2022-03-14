@@ -202,6 +202,11 @@ func (d *Datastore) AddActivityToPublicInbox(ctx context.Context, activity vocab
 	if activity.GetJSONLDId().Get().Host == d.server.Host {
 		marshalledActivity["isLocal"] = true
 		marshalledActivity["isInstitute"] = true
+	} else {
+		marshalledActivity["isLocal"] = false
+	}
+	if _, ok := marshalledActivity["isInstitute"]; !ok {
+		marshalledActivity["isInstitute"], err = d.IsHostSameInstitute(ctx, activity.GetJSONLDId().Get())
 	}
 	res, err := activities.InsertOne(ctx, marshalledActivity)
 	if err != nil {
