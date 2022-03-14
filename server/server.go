@@ -59,8 +59,8 @@ type Datastore interface {
 	GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	AddActivityToPublicInbox(context.Context, vocab.Type, primitive.ObjectID, bool) error
-	GetPublicInbox(context.Context, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
-	GetPublicInboxAsOrderedCollection(context.Context, bool) (vocab.ActivityStreamsOrderedCollection, error)
+	GetPublicInbox(context.Context, string, string, bool, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
+	GetPublicInboxAsOrderedCollection(context.Context, bool, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	DeleteObjectFromAllInboxes(context.Context, *url.URL) error
 	AddHostToSameInstitute(ctx context.Context, instance *url.URL) error
 }
@@ -533,18 +533,15 @@ func (s *Server) getPublicInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := r.URL.Query().Get("page")
-	var local, university bool
+	var local, institute bool
 	if l := r.URL.Query().Get("local"); strings.ToLower(l) == "true" {
 		local = true
 	}
-	if u := r.URL.Query().Get("university"); strings.ToLower(u) == "true" {
-		university = true
-	}
-	if university {
-		log.Infof("Should load university posts")
+	if i := r.URL.Query().Get("institute"); strings.ToLower(i) == "true" {
+		institute = true
 	}
 	if strings.ToLower(page) != "true" {
-		orderedCollection, err := s.Datastore.GetPublicInboxAsOrderedCollection(ctx, local)
+		orderedCollection, err := s.Datastore.GetPublicInboxAsOrderedCollection(ctx, local, institute)
 		if err != nil {
 			log.Errorf("Failed to read from Public Inbox: got err=%v", err)
 			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
@@ -575,7 +572,7 @@ func (s *Server) getPublicInbox(w http.ResponseWriter, r *http.Request) {
 	if minID == "" {
 		minID = "0"
 	}
-	orderedCollectionPage, err := s.Datastore.GetPublicInbox(ctx, minID, maxID, local)
+	orderedCollectionPage, err := s.Datastore.GetPublicInbox(ctx, minID, maxID, local, institute)
 	if err != nil {
 		log.Errorf("Failed to read from Public Inbox: got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
