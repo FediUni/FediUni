@@ -662,7 +662,15 @@ func (c *Client) DereferenceObjectsInOrderedCollection(ctx context.Context, coll
 	if firstPage == nil {
 		return nil, fmt.Errorf("%s Cannot dereference items on OrderedCollection ID=%q as first page=%v", prefix, collectionID.String(), first)
 	}
-	log.Infof("%s Traversing the OrderedCollection ID=%q starting from First Page ID=%q", prefix, collectionID.String(), firstPage.GetJSONLDId().Get().String())
+	firstPageIDProperty := firstPage.GetJSONLDId()
+	if firstPageIDProperty == nil {
+		return nil, fmt.Errorf("%s Cannot dereference items on OrderedCollection ID=%q as first page ID property=%v", prefix, collectionID.String(), firstPageIDProperty)
+	}
+	firstPageID := firstPageIDProperty.Get()
+	if firstPageID == nil {
+		return nil, fmt.Errorf("%s Cannot dereference items on OrderedCollection ID=%q as first page ID=%v", prefix, collectionID.String(), firstPageID)
+	}
+	log.Infof("%s Traversing the OrderedCollection ID=%q starting from First Page ID=%q", prefix, collectionID.String(), firstPageID.String())
 	// Traverse next until the specified page is reached.
 	nextPage := firstPage
 	currentPage := firstPage
