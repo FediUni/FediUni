@@ -199,7 +199,10 @@ func (d *Datastore) AddActivityToPublicInbox(ctx context.Context, activity vocab
 	marshalledActivity["_id"] = objectID
 	marshalledActivity["isReply"] = isReply
 	// If the hostname matches the activity was created locally.
-	marshalledActivity["isLocal"] = activity.GetJSONLDId().Get().Host == d.server.Host
+	if activity.GetJSONLDId().Get().Host == d.server.Host {
+		marshalledActivity["isLocal"] = true
+		marshalledActivity["isInstitute"] = true
+	}
 	res, err := activities.InsertOne(ctx, marshalledActivity)
 	if err != nil {
 		return err
@@ -897,4 +900,28 @@ func (d *Datastore) DeleteObjectFromInbox(ctx context.Context, objectID *url.URL
 	}
 	log.Infof("Deleted %d documents from Public Inbox", res.DeletedCount)
 	return nil
+}
+
+func (d *Datastore) AddHostToSameInstitute(ctx context.Context, instance *url.URL) error {
+	sameInstitute := d.client.Database("FediUni").Collection("sameInstitute")
+	opts := options.Update().SetUpsert(true)
+	res, err := sameInstitute.UpdateOne(ctx, bson.M{"host": instance.Host}, bson.M{
+		"host": instance.Host,
+	}, opts)
+	if err != nil {
+		return fmt.Errorf("failed to insert host to University: got err=%v", err)
+	}
+	log.Infof("Modified %d documents and Upserted %d documents to sameInstitute", res.ModifiedCount, res.UpsertedCount)
+	return nil
+}
+
+func (d *Datastore) IsHostSameInstitute(ctx context.Context, instance *url.URL) (bool, error) {
+	sameInstitute := d.client.Database("FediUni").Collection("sameInstitute")
+	res := sameInstitute.FindOne(ctx, bson.M{"host": instance.Host})
+	if err := res.Err(); err == mongo.ErrNoDocuments {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
 }

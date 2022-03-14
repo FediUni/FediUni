@@ -345,6 +345,37 @@ func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID str
 	return webfingerResponse, nil
 }
 
+type InstanceDetails struct {
+	// Name is the name of the current server, e.g Society or Club Name.
+	Name string
+	// Institute indicates the associated institute of the current society.
+	Institute string
+}
+
+func (c *Client) LookupInstanceDetails(ctx context.Context, instanceURL *url.URL) (*InstanceDetails, error) {
+	detailsEndpoint, err := url.Parse(fmt.Sprintf("https://%s/api/instance", instanceURL.Host))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse instance URL: got err=%v", err)
+	}
+	res, err := http.DefaultClient.Get(detailsEndpoint.String())
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	if len(body) == 0 {
+		return nil, fmt.Errorf("received empty body: %q", string(body))
+	}
+	var details *InstanceDetails
+	if err := json.Unmarshal(body, &details); err != nil {
+		return nil, fmt.Errorf("Failed to unmarshal instance details: got err=%v", details)
+	}
+	return details, nil
+}
+
 // Create dereferences the actor and object fields of the activity.
 func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate, depth int, maxDepth int) error {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)

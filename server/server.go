@@ -62,6 +62,7 @@ type Datastore interface {
 	GetPublicInbox(context.Context, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetPublicInboxAsOrderedCollection(context.Context, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	DeleteObjectFromAllInboxes(context.Context, *url.URL) error
+	AddHostToSameInstitute(ctx context.Context, instance *url.URL) error
 }
 
 type Server struct {
@@ -943,6 +944,18 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Infof("Determining Activity Type: got=%q", activityRequest.GetTypeName())
+	id := activityRequest.GetJSONLDId().Get()
+	details, err := s.Client.LookupInstanceDetails(ctx, id)
+	if err != nil {
+		log.Errorf("Unable to fetch instance details: got err=%v", err)
+	}
+	if details == nil {
+		log.Infof("Host=%q is not a FediUni instance", id.Host)
+	} else if details.Institute != "" && details.Institute == viper.GetString("INSTITUTE_NAME") {
+		if err := s.Datastore.AddHostToSameInstitute(ctx, id); err != nil {
+			log.Errorf("Failed to add host to known institutes: got err=%v", err)
+		}
+	}
 	switch typeName := activityRequest.GetTypeName(); typeName {
 	case "Create":
 		if err := s.handleCreateRequest(ctx, activityRequest, username); err != nil {
@@ -1467,13 +1480,6 @@ func (s *Server) Webfinger(w http.ResponseWriter, r *http.Request) {
 	w.Write(response)
 }
 
-type InstanceDetails struct {
-	// Name is the name of the current server, e.g Society or Club Name.
-	Name string
-	// Institute indicates the associated institute of the current society.
-	Institute string
-}
-
 func (s *Server) getInstanceInfo(w http.ResponseWriter, r *http.Request) {
 	name := viper.GetString("INSTANCE_NAME")
 	if name == "" {
@@ -1483,7 +1489,7 @@ func (s *Server) getInstanceInfo(w http.ResponseWriter, r *http.Request) {
 	if institute == "" {
 		log.Errorf("INSTITUTE_NAME is undefined in config")
 	}
-	details := &InstanceDetails{
+	details := &client.InstanceDetails{
 		Name:      name,
 		Institute: institute,
 	}
