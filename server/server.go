@@ -1254,8 +1254,24 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err != nil {
 		return fmt.Errorf("failed to parse handleFollowRequest activityRequest: got err=%v", err)
 	}
-	followerID := follow.GetActivityStreamsActor().Begin().GetIRI()
-	if followerID.String() == "" {
+	var followerID *url.URL
+	followingActor := follow.GetActivityStreamsActor()
+	for iter := followingActor.Begin(); iter != followingActor.End(); iter = iter.Next() {
+		switch {
+		case iter.IsIRI():
+			followerID = iter.GetIRI()
+		case iter.IsActivityStreamsPerson():
+			person := iter.GetActivityStreamsPerson()
+			personIDProperty := person.GetJSONLDId()
+			if personIDProperty == nil {
+				return fmt.Errorf("failed to handle FollowRequest: got Person ID Property=%v", personIDProperty)
+			}
+			followerID = person.GetJSONLDId().Get()
+		default:
+			return fmt.Errorf("unexpected Actor type received: got Actor=%v", followingActor)
+		}
+	}
+	if followerID == nil {
 		return fmt.Errorf("follower ID is unspecified: got=%q", followerID)
 	}
 	actorID := follow.GetActivityStreamsObject().Begin().GetIRI()
