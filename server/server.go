@@ -437,6 +437,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("failed to create user: username is unspecified")
 		http.Error(w, "username is unspecified", http.StatusBadRequest)
 	}
+	username = strings.ToLower(username)
 	displayName := r.FormValue("name")
 	password := r.FormValue("password")
 	if password == "" {
@@ -1425,8 +1426,14 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 	}
 	var objectID *url.URL
 	switch iter := presentedObject.Begin(); {
+	case iter.IsIRI():
+		objectID = iter.GetIRI()
 	case iter.IsActivityStreamsFollow():
-		objectID = iter.GetActivityStreamsFollow().GetJSONLDId().Get()
+		objectIDProperty := iter.GetActivityStreamsFollow().GetJSONLDId()
+		if objectIDProperty == nil {
+			return fmt.Errorf("failed to receive a valid Object: got Object without ID: %v", objectIDProperty)
+		}
+		objectID = objectIDProperty.Get()
 	default:
 		return fmt.Errorf("failed to receive a follow activity: got=%v", iter)
 	}
@@ -1443,8 +1450,14 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 	}
 	var followerID *url.URL
 	switch iter := follow.GetActivityStreamsActor().Begin(); {
+	case iter.IsIRI():
+		followerID = iter.GetIRI()
 	case iter.IsActivityStreamsPerson():
-		followerID = iter.GetActivityStreamsPerson().GetJSONLDId().Get()
+		followerIDProperty := iter.GetActivityStreamsPerson().GetJSONLDId()
+		if followerIDProperty == nil {
+			return fmt.Errorf("failed to receive a valid Person: got Person with ID Property=%v", followerIDProperty)
+		}
+		followerID = followerIDProperty.Get()
 	default:
 		return fmt.Errorf("non person actor specified in Actor property")
 	}
@@ -1453,6 +1466,12 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 	}
 	var actorID *url.URL
 	switch iter := follow.GetActivityStreamsObject().Begin(); {
+	case iter.IsIRI():
+		actorIDProperty := iter.GetActivityStreamsPerson().GetJSONLDId()
+		if actorIDProperty == nil {
+			return fmt.Errorf("failed to receive a valid Person: got Person with ID Property=%v", actorIDProperty)
+		}
+		actorID = actorIDProperty.Get()
 	case iter.IsActivityStreamsPerson():
 		actorID = iter.GetActivityStreamsPerson().GetJSONLDId().Get()
 	default:
