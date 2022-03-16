@@ -1274,13 +1274,29 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if followerID == nil {
 		return fmt.Errorf("follower ID is unspecified: got=%q", followerID)
 	}
-	actorID := follow.GetActivityStreamsObject().Begin().GetIRI()
-	if actorID.String() == "" {
-		return fmt.Errorf("actor ID is unspecified: got=%q", actorID)
+	var followedID *url.URL
+	followedActor := follow.GetActivityStreamsObject()
+	for iter := followedActor.Begin(); iter != followedActor.End(); iter = iter.Next() {
+		switch {
+		case iter.IsIRI():
+			followedID = iter.GetIRI()
+		case iter.IsActivityStreamsPerson():
+			person := iter.GetActivityStreamsPerson()
+			personIDProperty := person.GetJSONLDId()
+			if personIDProperty == nil {
+				return fmt.Errorf("failed to handle FollowRequest: got Person ID Property=%v", personIDProperty)
+			}
+			followedID = person.GetJSONLDId().Get()
+		default:
+			return fmt.Errorf("unexpected Object type received: got Object=%v", followingActor)
+		}
 	}
-	accept := follower.PrepareAcceptActivity(follow, actorID)
+	if followedID == nil {
+		return fmt.Errorf("followed ID is unspecified: got=%q", followerID)
+	}
+	accept := follower.PrepareAcceptActivity(follow, followedID)
 	// Ensure Actor exists on this server before adding activity.
-	person, err := s.Datastore.GetActorByActorID(ctx, actorID.String())
+	person, err := s.Datastore.GetActorByActorID(ctx, followedID.String())
 	if err != nil {
 		return fmt.Errorf("failed to load person: got err=%v", err)
 	}
@@ -1317,7 +1333,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err := s.Client.PostToInbox(ctx, remoteActor.GetActivityStreamsInbox().GetIRI(), accept, publicKeyID.Get().String(), privateKey); err != nil {
 		return fmt.Errorf("failed to post to actor Inbox=%q: got err=%v", remoteActor.GetActivityStreamsInbox().GetIRI().String(), err)
 	}
-	if err := s.Datastore.AddFollowerToActor(ctx, actorID.String(), followerID.String()); err != nil {
+	if err := s.Datastore.AddFollowerToActor(ctx, followedID.String(), followerID.String()); err != nil {
 		return fmt.Errorf("failed to add follower to actor: got err=%v", err)
 	}
 	return nil
