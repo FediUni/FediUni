@@ -757,6 +757,81 @@ func (c *Client) DereferenceObjectsInOrderedCollection(ctx context.Context, coll
 	return currentPage, nil
 }
 
+func (c *Client) DereferenceOutbox(ctx context.Context, outbox vocab.ActivityStreamsOutboxProperty, depth, maxDepth int) error {
+	if outbox == nil {
+		return fmt.Errorf("cannot dereference Outbox field: got Outbox=%v", outbox)
+	}
+	switch {
+	case outbox.IsIRI():
+		outboxID := outbox.GetIRI()
+		if outboxID == nil {
+			log.Errorf("unexpected IRI in Outbox Field: got Object ID=%v", outboxID)
+			break
+		}
+		a, err := c.FetchRemoteObject(ctx, outboxID, false, depth+1, maxDepth)
+		if err != nil {
+			log.Errorf("failed to fetch remote Object with ID=%q", outboxID.String())
+			break
+		}
+		if err := outbox.SetType(a); err != nil {
+			return err
+		}
+	default:
+		log.Infof("Object is not an IRI: skipping dereferencing Object")
+	}
+	return nil
+}
+
+func (c *Client) DereferenceFollowing(ctx context.Context, following vocab.ActivityStreamsFollowingProperty, depth, maxDepth int) error {
+	if following == nil {
+		return fmt.Errorf("cannot dereference Following field: got Outbox=%v", following)
+	}
+	switch {
+	case following.IsIRI():
+		followingID := following.GetIRI()
+		if followingID == nil {
+			log.Errorf("unexpected IRI in Following Field: got Object ID=%v", followingID)
+			break
+		}
+		a, err := c.FetchRemoteObject(ctx, followingID, false, depth+1, maxDepth)
+		if err != nil {
+			log.Errorf("failed to fetch remote Object with ID=%q", followingID.String())
+			break
+		}
+		if err := following.SetType(a); err != nil {
+			return err
+		}
+	default:
+		log.Infof("Object is not an IRI: skipping dereferencing Object")
+	}
+	return nil
+}
+
+func (c *Client) DereferenceFollowers(ctx context.Context, followers vocab.ActivityStreamsFollowersProperty, depth, maxDepth int) error {
+	if followers == nil {
+		return fmt.Errorf("cannot dereference Followers field: got Outbox=%v", followers)
+	}
+	switch {
+	case followers.IsIRI():
+		followersID := followers.GetIRI()
+		if followersID == nil {
+			log.Errorf("unexpected IRI in Followers Field: got Object ID=%v", followersID)
+			break
+		}
+		a, err := c.FetchRemoteObject(ctx, followersID, false, depth+1, maxDepth)
+		if err != nil {
+			log.Errorf("failed to fetch remote Object with ID=%q", followersID.String())
+			break
+		}
+		if err := followers.SetType(a); err != nil {
+			return err
+		}
+	default:
+		log.Infof("Object is not an IRI: skipping dereferencing Object")
+	}
+	return nil
+}
+
 func (c *Client) DereferenceItems(ctx context.Context, items vocab.ActivityStreamsItemsProperty, depth int, maxDepth int) error {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	itemsDereferenced := 0

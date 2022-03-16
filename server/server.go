@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/FediUni/FediUni/server/object"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/sync/errgroup"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -151,6 +152,7 @@ func (s *Server) homepage(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	username := chi.URLParam(r, "username")
 	if username == "" {
 		http.Error(w, "username is unspecified", http.StatusBadRequest)
@@ -161,6 +163,16 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("failed to get actor with ID=%q: got err=%v", username, err)
 		http.Error(w, "failed to load actor", http.StatusNotFound)
 		return
+	}
+	statistics := r.URL.Query().Get("statistics")
+	var eg errgroup.Group
+	if strings.ToLower(statistics) == "true" {
+		eg.Go(func() error { return s.Client.DereferenceFollowers(ctx, person.GetActivityStreamsFollowers(), 0, 1) })
+		eg.Go(func() error { return s.Client.DereferenceFollowing(ctx, person.GetActivityStreamsFollowing(), 0, 1) })
+		eg.Go(func() error { return s.Client.DereferenceOutbox(ctx, person.GetActivityStreamsOutbox(), 0, 1) })
+		if err := eg.Wait(); err != nil {
+			log.Errorf("Dereferencing has failed: got err=%v", err)
+		}
 	}
 	serializedPerson, err := streams.Serialize(person)
 	if err != nil {
@@ -191,13 +203,23 @@ func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to receive an actor identifier", http.StatusBadRequest)
 		return
 	}
-	actor, err := s.Client.FetchRemoteActor(ctx, identifier)
+	person, err := s.Client.FetchRemotePerson(ctx, identifier)
 	if err != nil {
 		log.Errorf("failed to retrieve actor: got err=%v", err)
 		http.Error(w, "Failed to load actor", http.StatusInternalServerError)
 		return
 	}
-	m, err := streams.Serialize(actor)
+	statistics := r.URL.Query().Get("statistics")
+	var eg errgroup.Group
+	if strings.ToLower(statistics) == "true" {
+		eg.Go(func() error { return s.Client.DereferenceFollowers(ctx, person.GetActivityStreamsFollowers(), 0, 1) })
+		eg.Go(func() error { return s.Client.DereferenceFollowing(ctx, person.GetActivityStreamsFollowing(), 0, 1) })
+		eg.Go(func() error { return s.Client.DereferenceOutbox(ctx, person.GetActivityStreamsOutbox(), 0, 1) })
+		if err := eg.Wait(); err != nil {
+			log.Errorf("Dereferencing has failed: got err=%v", err)
+		}
+	}
+	m, err := streams.Serialize(person)
 	if err != nil {
 		log.Errorf("failed to serialize actor: got err=%v", err)
 		http.Error(w, "Failed to load actor", http.StatusInternalServerError)

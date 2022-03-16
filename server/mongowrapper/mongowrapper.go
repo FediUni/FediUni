@@ -87,6 +87,9 @@ func (d *Datastore) GetFollowersByUsername(ctx context.Context, username string)
 	if err := res.Decode(&f); err != nil {
 		return nil, err
 	}
+	totalItemsCount := streams.NewActivityStreamsTotalItemsProperty()
+	totalItemsCount.Set(len(f.Followers))
+	followers.SetActivityStreamsTotalItems(totalItemsCount)
 	for _, follower := range f.Followers {
 		followerID, err := url.Parse(follower)
 		if err != nil {
@@ -109,8 +112,11 @@ func (d *Datastore) GetFollowingByUsername(ctx context.Context, username string)
 	if err := actors.FindOne(ctx, filter).Decode(&f); err != nil {
 		return nil, err
 	}
-	followers := streams.NewActivityStreamsOrderedCollection()
+	following := streams.NewActivityStreamsOrderedCollection()
 	orderedFollowing := streams.NewActivityStreamsOrderedItemsProperty()
+	totalItemsCount := streams.NewActivityStreamsTotalItemsProperty()
+	totalItemsCount.Set(len(f.Following))
+	following.SetActivityStreamsTotalItems(totalItemsCount)
 	for _, following := range f.Following {
 		followerID, err := url.Parse(following)
 		if err != nil {
@@ -122,8 +128,8 @@ func (d *Datastore) GetFollowingByUsername(ctx context.Context, username string)
 		p.SetJSONLDId(idProperty)
 		orderedFollowing.AppendActivityStreamsPerson(p)
 	}
-	followers.SetActivityStreamsOrderedItems(orderedFollowing)
-	return followers, nil
+	following.SetActivityStreamsOrderedItems(orderedFollowing)
+	return following, nil
 }
 
 // GetActorByActorID returns an instance of Person from Mongo using URI.
