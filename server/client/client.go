@@ -376,6 +376,58 @@ func (c *Client) LookupInstanceDetails(ctx context.Context, instanceURL *url.URL
 	return details, nil
 }
 
+func (c *Client) DereferenceActor(ctx context.Context, actor vocab.ActivityStreamsActorProperty, depth, maxDepth int) error {
+	if actor == nil {
+		return fmt.Errorf("cannot dereference Actor field: got Actor=%v", actor)
+	}
+	for iter := actor.Begin(); iter != actor.End(); iter = iter.Next() {
+		var actorID *url.URL
+		switch {
+		case iter.IsIRI():
+			actorID = iter.GetIRI()
+			if actorID == nil {
+				log.Errorf("unexpected IRI in Actor Field: got Actor ID=%v", actorID)
+				break
+			}
+			a, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, maxDepth)
+			if err != nil {
+				log.Errorf("failed to fetch remote Actor with ID=%q", actorID.String())
+				break
+			}
+			iter.SetType(a)
+		default:
+			log.Infof("Actor is not an IRI: skipping dereferencing actor")
+		}
+	}
+	return nil
+}
+
+func (c *Client) DereferenceAttributedTo(ctx context.Context, attributedTo vocab.ActivityStreamsAttributedToProperty, depth, maxDepth int) error {
+	if attributedTo == nil {
+		return fmt.Errorf("cannot dereference AttributedTo field: got AttributedTo=%v", attributedTo)
+	}
+	for iter := attributedTo.Begin(); iter != attributedTo.End(); iter = iter.Next() {
+		var actorID *url.URL
+		switch {
+		case iter.IsIRI():
+			actorID = iter.GetIRI()
+			if actorID == nil {
+				log.Errorf("unexpected IRI in AttributedTo Field: got Object ID=%v", actorID)
+				break
+			}
+			a, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, maxDepth)
+			if err != nil {
+				log.Errorf("failed to fetch remote Object with ID=%q", actorID.String())
+				break
+			}
+			iter.SetType(a)
+		default:
+			log.Infof("Object is not an IRI: skipping dereferencing Object")
+		}
+	}
+	return nil
+}
+
 // Create dereferences the actor and object fields of the activity.
 func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate, depth int, maxDepth int) error {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
@@ -383,20 +435,8 @@ func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate,
 		log.Infof("%s Skipping dereferencing Create Activity ID=%q", prefix, create.GetJSONLDId().Get())
 		return nil
 	}
-	// Dereference all Actors of type Person in actor field.
-	for iter := create.GetActivityStreamsActor().Begin(); iter != nil; iter = iter.Next() {
-		var actorID *url.URL
-		switch {
-		case iter.IsIRI():
-			actorID = iter.GetIRI()
-		case iter.IsActivityStreamsPerson():
-			actorID = iter.GetActivityStreamsPerson().GetJSONLDId().Get()
-		}
-		person, err := c.FetchRemotePersonWithID(ctx, actorID)
-		if err != nil {
-			return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID, err)
-		}
-		iter.SetActivityStreamsPerson(person)
+	if err := c.DereferenceActor(ctx, create.GetActivityStreamsActor(), depth, maxDepth); err != nil {
+		log.Errorf("%s Failed to dereference actors: got err=%v", prefix, err)
 	}
 	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		if !iter.IsIRI() {
@@ -429,19 +469,8 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 		log.Infof("%s Skipping dereferencing Announce Activity ID=%q", prefix, announce.GetJSONLDId().Get())
 		return nil
 	}
-	for iter := announce.GetActivityStreamsActor().Begin(); iter != nil; iter = iter.Next() {
-		var actorID *url.URL
-		switch {
-		case iter.IsIRI():
-			actorID = iter.GetIRI()
-		case iter.IsActivityStreamsPerson():
-			actorID = iter.GetActivityStreamsPerson().GetJSONLDId().Get()
-		}
-		person, err := c.FetchRemotePersonWithID(ctx, actorID)
-		if err != nil {
-			return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID, err)
-		}
-		iter.SetActivityStreamsPerson(person)
+	if err := c.DereferenceActor(ctx, announce.GetActivityStreamsActor(), depth, maxDepth); err != nil {
+		log.Errorf("%s Failed to dereference actors: got err=%v", prefix, err)
 	}
 	for iter := announce.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		if !iter.IsIRI() {
@@ -485,33 +514,8 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 		log.Infof("%s Skipping dereferencing Note Object ID=%q", prefix, noteID.String())
 		return nil
 	}
-	if note.GetActivityStreamsAttributedTo() == nil {
-		return fmt.Errorf("error in dereferencing note: got attributedTo=%v", note.GetActivityStreamsAttributedTo())
-	}
-	for iter := note.GetActivityStreamsAttributedTo().Begin(); iter != nil; iter = iter.Next() {
-		switch {
-		case iter.IsIRI():
-			actorID := iter.GetIRI()
-			actorRetrieved, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, maxDepth)
-			if err != nil {
-				return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", actorID.String(), err)
-			}
-			switch actorRetrieved.GetTypeName() {
-			case "Person":
-				person, err := actor.ParsePerson(ctx, actorRetrieved)
-				if err != nil {
-					return fmt.Errorf("failed to parse Actor ID=%q as Person: got err=%v", actorID.String(), err)
-				}
-				iter.SetActivityStreamsPerson(person)
-			}
-		case iter.IsActivityStreamsPerson():
-			p := iter.GetActivityStreamsPerson()
-			person, err := c.FetchRemotePersonWithID(ctx, p.GetJSONLDId().Get())
-			if err != nil {
-				return fmt.Errorf("failed to resolve Actor ID=%q: got err=%v", p.GetJSONLDId().Get().String(), err)
-			}
-			iter.SetActivityStreamsPerson(person)
-		}
+	if err := c.DereferenceAttributedTo(ctx, note.GetActivityStreamsAttributedTo(), depth, maxDepth); err != nil {
+		log.Errorf("%s failed to dereference AttributeTo on NoteID=%q: got err=%v", prefix, noteID.String(), err)
 	}
 	if depth == maxDepth-1 {
 		log.Infof("%s Skipping replies to Note ID=%q", prefix, noteID.String())
@@ -549,6 +553,7 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 	if _, err := c.DereferenceObjectsInCollection(ctx, collection, 0, depth+1, maxDepth); err != nil {
 		log.Errorf("Failed to dereference replies to Note ID=%q: got err=%v", noteID.String(), err)
 	}
+	log.Infof("Handling second page of replies to Note ID=%q", noteID.String())
 	if _, err := c.DereferenceObjectsInCollection(ctx, collection, 1, depth+1, maxDepth); err != nil {
 		log.Errorf("Failed to dereference replies to Note ID=%q: got err=%v", noteID.String(), err)
 	}
