@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"io/ioutil"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"text/template"
@@ -450,7 +451,7 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	// Set MaxMemory to 8MB.
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		log.Errorf("failed to parse Login Form: got err=%v", err)
+		log.Errorf("failed to parse Registration Form: got err=%v", err)
 		http.Error(w, fmt.Sprint("failed to create user"), http.StatusBadRequest)
 		return
 	}
@@ -976,6 +977,12 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 			log.Errorf("Failed to add host to known institutes: got err=%v", err)
 		}
 	}
+	dump, err := httputil.DumpRequestOut(r, true)
+	if err != nil {
+		log.Errorf("Can't dump: %v", err)
+	} else {
+		log.Infof("%s", dump)
+	}
 	switch typeName := activityRequest.GetTypeName(); typeName {
 	case "Create":
 		if err := s.handleCreateRequest(ctx, activityRequest, username); err != nil {
@@ -1009,6 +1016,12 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		}
 	case "Delete":
 		if err := s.delete(ctx, activityRequest); err != nil {
+			log.Errorf("Failed to delete specified object: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to delete object"), http.StatusInternalServerError)
+			return
+		}
+	case "Update":
+		if err := s.update(ctx, activityRequest); err != nil {
 			log.Errorf("Failed to delete specified object: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to delete object"), http.StatusInternalServerError)
 			return
@@ -1435,6 +1448,12 @@ func (s *Server) delete(ctx context.Context, activityRequest vocab.Type) error {
 		return fmt.Errorf("failed to remove object: got err=%v", err)
 	}
 	return nil
+}
+
+// Update can only update activities and objects owned by the actor or server.
+// See: https://www.w3.org/TR/activitypub/#update-activity-inbox
+func (s *Server) update(ctx context.Context, activityRequest vocab.Type) error {
+	return fmt.Errorf("support for updating activities and objects is unimplemented")
 }
 
 func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) error {
