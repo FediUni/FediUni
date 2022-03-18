@@ -7,7 +7,7 @@ executors:
     environment:
       IMAGE_NAME: phixyz/fediuni
     docker:
-      - image: circleci/buildpack-deps:stretch
+      - image: cimg/go
 
 # Define a job to be invoked later in a workflow.
 # See: https://circleci.com/docs/2.0/configuration-reference/#jobs
