@@ -7,7 +7,7 @@ COPY go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go build -o /fediuni
+RUN go build -o /fediuni -buildvcs=false
 
 # Deploy FediUni binary.
 FROM alpine:latest
