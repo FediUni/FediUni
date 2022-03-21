@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -126,7 +127,20 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 
 	activitypubRouter := chi.NewRouter()
 
-	activitypubRouter.Handle("/static/*", http.StripPrefix("/static", s.FileHandler.Server))
+	images := fmt.Sprintf("%s/", viper.GetString("IMAGES_ROOT"))
+	if _, err := os.Stat(images); os.IsNotExist(err) {
+		return nil, fmt.Errorf("directory=%q Not Found", images)
+	}
+	fs := http.StripPrefix("/api/static", http.FileServer(http.Dir(images)))
+	activitypubRouter.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		file := strings.Replace(r.RequestURI, "/api/static/", "/", 1)
+		log.Infof("File=%q", file)
+		if _, err := os.Stat(filepath.Join(images, file)); os.IsNotExist(err) {
+			http.Error(w, fmt.Sprintf("Failed to load file"), http.StatusNotFound)
+			return
+		}
+		fs.ServeHTTP(w, r)
+	}))
 
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor", s.getAnyActor)
 	activitypubRouter.Get("/actor/{username}", s.getActor)

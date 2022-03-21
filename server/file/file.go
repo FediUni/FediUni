@@ -38,7 +38,6 @@ func NewHandler(images string) (*Handler, error) {
 	if err := initializeDirectory(images); err != nil {
 		return nil, err
 	}
-
 	return &Handler{
 		Images: images,
 		Server: http.FileServer(http.Dir(images)),
