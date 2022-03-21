@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/spf13/viper"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -147,7 +148,11 @@ func TestGetActor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to parse URL: got err=%v", err)
 	}
-	s, _ := New(url, NewTestDatastore(url), nil, "")
+	viper.Set("IMAGES_ROOT", "/tmp")
+	s, err := New(url, NewTestDatastore(url), nil, "")
+	if err != nil {
+		t.Fatalf("Failed to create server: got err=%v", err)
+	}
 	server := httptest.NewServer(s.Router)
 	defer server.Close()
 	resp, err := http.Get(fmt.Sprintf("%s/actor/bendean", server.URL))

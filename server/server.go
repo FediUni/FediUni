@@ -269,7 +269,7 @@ func (s *Server) updateActor(w http.ResponseWriter, r *http.Request) {
 	if err == http.ErrMissingFile {
 		log.Infoln("No profile picture presented")
 	} else if err != nil {
-		log.Errorf("failed to parse profile picture: got err=%v")
+		log.Errorf("failed to parse profile picture: got err=%v", err)
 		http.Error(w, fmt.Sprintf("Failed to parse profile picture"), http.StatusBadRequest)
 		return
 	}

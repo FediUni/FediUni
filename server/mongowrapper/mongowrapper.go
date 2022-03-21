@@ -81,7 +81,7 @@ func (d *Datastore) UpdateActor(ctx context.Context, username string, displayNam
 	if err != nil {
 		return nil
 	}
-	log.Infoln("Modified %d records", res.ModifiedCount)
+	log.Infof("Modified %d records", res.ModifiedCount)
 	return nil
 }
 
