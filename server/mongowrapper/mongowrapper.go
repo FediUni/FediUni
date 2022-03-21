@@ -69,15 +69,24 @@ func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (ac
 func (d *Datastore) UpdateActor(ctx context.Context, username string, displayName string, summary string, profilePicture vocab.ActivityStreamsImage) error {
 	actors := d.client.Database("FediUni").Collection("actors")
 	filter := bson.D{{"preferredUsername", strings.ToLower(username)}}
-	profile, err := streams.Serialize(profilePicture)
-	if err != nil {
-		return err
+	var values bson.D
+	if profilePicture != nil {
+		profile, err := streams.Serialize(profilePicture)
+		if err != nil {
+			return err
+		}
+		values = bson.D{
+			{"$set", bson.D{{"name", displayName}}},
+			{"$set", bson.D{{"summary", summary}}},
+			{"$set", bson.D{{"icon", profile}}},
+		}
+	} else {
+		values = bson.D{
+			{"$set", bson.D{{"name", displayName}}},
+			{"$set", bson.D{{"summary", summary}}},
+		}
 	}
-	res, err := actors.UpdateOne(ctx, filter, bson.D{
-		{"$set", bson.D{{"name", displayName}}},
-		{"$set", bson.D{{"summary", summary}}},
-		{"$set", bson.D{{"icon", profile}}},
-	})
+	res, err := actors.UpdateOne(ctx, filter, values)
 	if err != nil {
 		return nil
 	}

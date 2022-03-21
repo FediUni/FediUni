@@ -278,25 +278,28 @@ func (s *Server) updateActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Profile picture is larger than %d MiB", maxProfileImageSize), http.StatusBadRequest)
 		return
 	}
-	path, err := s.FileHandler.StoreProfilePicture(tempFile, tempFileHeader.Filename)
-	if err != nil {
-		log.Errorf("failed to store profile picture: got err=%v", err)
-		http.Error(w, fmt.Sprintf("Failed to update profile picture"), http.StatusInternalServerError)
-		return
+	var image vocab.ActivityStreamsImage
+	if tempFile != nil {
+		path, err := s.FileHandler.StoreProfilePicture(tempFile, tempFileHeader.Filename)
+		if err != nil {
+			log.Errorf("failed to store profile picture: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to update profile picture"), http.StatusInternalServerError)
+			return
+		}
+		profilePictureURL, err := url.Parse(fmt.Sprintf("%s/static/%s", s.URL.String(), path))
+		if err != nil {
+			log.Errorf("failed to create profile picture path: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to update profile picture"), http.StatusInternalServerError)
+			return
+		}
+		image = streams.NewActivityStreamsImage()
+		urlProperty := streams.NewActivityStreamsUrlProperty()
+		image.SetActivityStreamsUrl(urlProperty)
+		urlProperty.AppendIRI(profilePictureURL)
+		mediaType := streams.NewActivityStreamsMediaTypeProperty()
+		mediaType.Set(fmt.Sprintf("image/%s", strings.ToLower(filepath.Ext(tempFileHeader.Filename)[1:])))
+		image.SetActivityStreamsMediaType(mediaType)
 	}
-	profilePictureURL, err := url.Parse(fmt.Sprintf("%s/static/%s", s.URL.String(), path))
-	if err != nil {
-		log.Errorf("failed to create profile picture path: got err=%v", err)
-		http.Error(w, fmt.Sprintf("Failed to update profile picture"), http.StatusInternalServerError)
-		return
-	}
-	image := streams.NewActivityStreamsImage()
-	urlProperty := streams.NewActivityStreamsUrlProperty()
-	image.SetActivityStreamsUrl(urlProperty)
-	urlProperty.AppendIRI(profilePictureURL)
-	mediaType := streams.NewActivityStreamsMediaTypeProperty()
-	mediaType.Set(fmt.Sprintf("image/%s", strings.ToLower(filepath.Ext(tempFileHeader.Filename)[1:])))
-	image.SetActivityStreamsMediaType(mediaType)
 	if err := s.Datastore.UpdateActor(ctx, username, displayName, summary, image); err != nil {
 		log.Errorf("failed to update actor: got err=%v", err)
 		http.Error(w, fmt.Sprintf("Failed to update actor"), http.StatusInternalServerError)
