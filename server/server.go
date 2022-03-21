@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"github.com/FediUni/FediUni/server/file"
 	"github.com/FediUni/FediUni/server/object"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/sync/errgroup"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"text/template"
 	"time"
@@ -37,6 +39,10 @@ import (
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
+)
+
+const (
+	maxProfileImageSize = 5242880 // This represents a value of 5 MiB.
 )
 
 type Datastore interface {
@@ -65,11 +71,13 @@ type Datastore interface {
 	GetPublicInboxAsOrderedCollection(context.Context, bool, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	DeleteObjectFromAllInboxes(context.Context, *url.URL) error
 	AddHostToSameInstitute(ctx context.Context, instance *url.URL) error
+	UpdateActor(context.Context, string, string, string, vocab.ActivityStreamsImage) error
 }
 
 type Server struct {
 	URL          *url.URL
 	Router       *chi.Mux
+	FileHandler  *file.Handler
 	Datastore    Datastore
 	Redis        *redis.Client
 	KeyGenerator actor.KeyGenerator
@@ -84,8 +92,13 @@ var (
 
 func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
 	tokenAuth = jwtauth.New("HS256", []byte(secret), nil)
+	fileHandler, err := file.NewHandler(viper.GetString("IMAGES_ROOT"))
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
 		URL:          instanceURL,
+		FileHandler:  fileHandler,
 		Datastore:    datastore,
 		KeyGenerator: keyGenerator,
 		Client:       client.NewClient(instanceURL, "redis:6379", viper.GetString("REDIS_PASSWORD")),
@@ -112,20 +125,26 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	}))
 
 	activitypubRouter := chi.NewRouter()
+
+	activitypubRouter.Handle("/static/*", http.StripPrefix("/static", s.FileHandler.Server))
+
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor", s.getAnyActor)
 	activitypubRouter.Get("/actor/{username}", s.getActor)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/actor/{username}/update", s.updateActor)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/outbox", s.getAnyActorOutbox)
-	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/inbox", s.getPublicInbox)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
 	activitypubRouter.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	activitypubRouter.Get("/actor/{username}/outbox", s.getActorOutbox)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/actor/{username}/outbox", s.postActorOutbox)
 	activitypubRouter.Get("/actor/{username}/followers", s.getFollowers)
 	activitypubRouter.Get("/actor/{username}/following", s.getFollowing)
-	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
-	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/activity", s.getAnyActivity)
+
 	activitypubRouter.Post("/register", s.createUser)
 	activitypubRouter.Post("/login", s.login)
+
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/inbox", s.getPublicInbox)
+	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/activity", s.getAnyActivity)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow/status", s.checkFollowStatus)
 	activitypubRouter.Get("/instance", s.getInstanceInfo)
@@ -152,6 +171,9 @@ func (s *Server) homepage(w http.ResponseWriter, _ *http.Request) {
 	homeTemplate.Execute(w, "Home")
 }
 
+// getActor returns the ActivityPub actor with a corresponding username.
+// If the statistics query parameter is true then the number of Followers,
+// Actors Followed, and size of Outbox is returned.
 func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	username := chi.URLParam(r, "username")
@@ -188,6 +210,86 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(m)
+}
+
+// updateActor allows an actor to update their mutable details.
+// This includes their name, summary, and profile picture.
+func (s *Server) updateActor(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
+	authorizedUsername, err := parseJWTUsername(claims)
+	if err != nil {
+		log.Errorf("Failed to load username from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to parse JWT"), http.StatusUnauthorized)
+		return
+	}
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		http.Error(w, "Username is unspecified", http.StatusBadRequest)
+		return
+	}
+	if authorizedUsername != username {
+		http.Error(w, "Not authorized to update Actor", http.StatusUnauthorized)
+		return
+	}
+	// Set MaxMemory to 8MB.
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		log.Errorf("failed to parse Update Form: got err=%v", err)
+		http.Error(w, fmt.Sprint("Failed to update user details"), http.StatusBadRequest)
+		return
+	}
+	displayName := r.FormValue("displayName")
+	if displayName != "" {
+		displayName = s.Policy.Sanitize(displayName)
+	}
+	summary := r.FormValue("summary")
+	if summary != "" {
+		summary = s.Policy.Sanitize(summary)
+	}
+	tempFile, tempFileHeader, err := r.FormFile("profilePicture")
+	if err == http.ErrMissingFile {
+		log.Infoln("No profile picture presented")
+	} else if err != nil {
+		log.Errorf("failed to parse profile picture: got err=%v")
+		http.Error(w, fmt.Sprintf("Failed to parse profile picture"), http.StatusBadRequest)
+		return
+	}
+	if tempFile != nil && tempFileHeader.Size > maxProfileImageSize {
+		log.Errorf("failed to parse profile picture: got size=%d max size=%d", tempFileHeader.Size, maxProfileImageSize)
+		http.Error(w, fmt.Sprintf("Profile picture is larger than %d MiB", maxProfileImageSize), http.StatusBadRequest)
+		return
+	}
+	path, err := s.FileHandler.StoreProfilePicture(tempFile, tempFileHeader.Filename)
+	if err != nil {
+		log.Errorf("failed to store profile picture: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to update profile picture"), http.StatusInternalServerError)
+		return
+	}
+	profilePictureURL, err := url.Parse(fmt.Sprintf("%s/static/%s", s.URL.String(), path))
+	if err != nil {
+		log.Errorf("failed to create profile picture path: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to update profile picture"), http.StatusInternalServerError)
+		return
+	}
+	image := streams.NewActivityStreamsImage()
+	urlProperty := streams.NewActivityStreamsUrlProperty()
+	image.SetActivityStreamsUrl(urlProperty)
+	urlProperty.AppendIRI(profilePictureURL)
+	mediaType := streams.NewActivityStreamsMediaTypeProperty()
+	mediaType.Set(fmt.Sprintf("image/%s", strings.ToLower(filepath.Ext(tempFileHeader.Filename)[1:])))
+	image.SetActivityStreamsMediaType(mediaType)
+	if err := s.Datastore.UpdateActor(ctx, username, displayName, summary, image); err != nil {
+		log.Errorf("failed to update actor: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to update actor"), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	return
 }
 
 func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
@@ -534,7 +636,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		log.Errorf("invalid password provided: got err=%v", err)
-		http.Error(w, fmt.Sprint("invalid password"), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprint("invalid password"), http.StatusBadRequest)
 		return
 	}
 	res, err := s.generateTokenResponse(username)

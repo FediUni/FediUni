@@ -12,9 +12,11 @@ require (
 	github.com/go-fed/httpsig v1.1.0
 	github.com/golang/glog v1.0.0
 	github.com/google/go-cmp v0.5.7
+	github.com/google/uuid v1.1.2
 	github.com/spf13/viper v1.10.1
 	go.mongodb.org/mongo-driver v1.7.4
 	golang.org/x/crypto v0.0.0-20211108221036-ceb1ce70b4fa
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 )
 
 require (
@@ -54,7 +56,6 @@ require (
 	github.com/xdg-go/stringprep v1.0.2 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20181117223130-1be2e3e5546d // indirect
 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
 	golang.org/x/text v0.3.7 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect

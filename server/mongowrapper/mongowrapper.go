@@ -66,6 +66,25 @@ func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (ac
 	return actor, nil
 }
 
+func (d *Datastore) UpdateActor(ctx context.Context, username string, displayName string, summary string, profilePicture vocab.ActivityStreamsImage) error {
+	actors := d.client.Database("FediUni").Collection("actors")
+	filter := bson.D{{"preferredUsername", strings.ToLower(username)}}
+	profile, err := streams.Serialize(profilePicture)
+	if err != nil {
+		return err
+	}
+	res, err := actors.UpdateOne(ctx, filter, bson.D{
+		{"$set", bson.D{{"name", displayName}}},
+		{"$set", bson.D{{"summary", summary}}},
+		{"$set", bson.D{{"icon", profile}}},
+	})
+	if err != nil {
+		return nil
+	}
+	log.Infoln("Modified %d records", res.ModifiedCount)
+	return nil
+}
+
 // GetFollowersByUsername returns an OrderedCollection of Follower IDs.
 func (d *Datastore) GetFollowersByUsername(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
 	actor, err := d.GetActorByUsername(ctx, username)
