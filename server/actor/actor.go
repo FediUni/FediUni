@@ -16,6 +16,13 @@ import (
 	"github.com/go-fed/activity/streams/vocab"
 )
 
+type Actor interface {
+	vocab.Type
+	GetActivityStreamsFollowers() vocab.ActivityStreamsFollowersProperty
+	GetActivityStreamsFollowing() vocab.ActivityStreamsFollowingProperty
+	GetActivityStreamsOutbox() vocab.ActivityStreamsOutboxProperty
+}
+
 // Person is a type of Actor from https://www.w3.org/TR/activitypub/#actors.
 type Person vocab.ActivityStreamsPerson
 

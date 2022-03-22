@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"github.com/go-fed/activity/pub"
 	"golang.org/x/sync/errgroup"
 	"io/ioutil"
 	"net/http"
@@ -215,12 +216,21 @@ func (c *Client) FetchRemotePersonWithID(ctx context.Context, personID *url.URL)
 }
 
 // FetchRemoteActor performs a Webfinger lookup and returns an Actor.
-func (c *Client) FetchRemoteActor(ctx context.Context, identifier string) (vocab.Type, error) {
+func (c *Client) FetchRemoteActor(ctx context.Context, identifier string) (actor.Actor, error) {
 	actorID, err := c.ResolveActorIdentifierToID(ctx, identifier)
 	if err != nil {
 		return nil, err
 	}
-	return c.FetchRemoteObject(ctx, actorID, false, 0, 1)
+	o, err := c.FetchRemoteObject(ctx, actorID, false, 0, 1)
+	if err != nil {
+		return nil, err
+	}
+	switch o.(type) {
+	case actor.Actor:
+		return o.(actor.Actor), nil
+	default:
+		return nil, fmt.Errorf("failed to receive an Actor: got=%v", o)
+	}
 }
 
 func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab.ActivityStreamsPerson, error) {
@@ -893,23 +903,29 @@ func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.Activi
 			defer func() {
 				<-sem
 			}()
-			var item vocab.Type
+			var itemID *url.URL
+			var err error
 			switch {
 			case current.IsIRI():
-				itemID := current.GetIRI()
-				log.Infof("%s Dereferencing Item ID = %q", prefix, itemID.String())
-				o, err := c.FetchRemoteObject(ctx, itemID, false, depth+1, maxDepth)
-				if err != nil {
-					return fmt.Errorf("%s Failed to fetch object ID=%q", prefix, current.GetIRI().String())
-				}
-				item = o
+				itemID = current.GetIRI()
 			default:
-				item = current.GetType()
+				itemID, err = pub.GetId(current.GetType())
+				if err != nil {
+					return err
+				}
+			}
+			if itemID == nil {
+				return nil
+			}
+			log.Infof("%s Dereferencing Item ID = %q", prefix, itemID.String())
+			item, err := c.FetchRemoteObject(ctx, itemID, false, depth+1, maxDepth)
+			if err != nil {
+				return fmt.Errorf("%s Failed to fetch object ID=%q", prefix, itemID.String())
 			}
 			if item == nil {
 				return nil
 			}
-			item, err := c.DereferenceItem(ctx, item, depth+1, maxDepth)
+			item, err = c.DereferenceItem(ctx, item, depth+1, maxDepth)
 			if err != nil {
 				return err
 			}

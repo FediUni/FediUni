@@ -49,7 +49,7 @@ func (d *TestDatastore) GetFollowerStatus(context.Context, string, string) (int,
 	return 0, fmt.Errorf("GetFollowerStatus() is unimplemented")
 }
 
-func (d *TestDatastore) GetActorByUsername(_ context.Context, username string) (actor.Person, error) {
+func (d *TestDatastore) GetActorByUsername(_ context.Context, username string) (vocab.ActivityStreamsPerson, error) {
 	if a := d.knownActors[username]; a != nil {
 		return a, nil
 	}
@@ -114,7 +114,7 @@ func (d *TestDatastore) AddObjectsToActorInbox(context.Context, []vocab.Type, st
 }
 
 func (d *TestDatastore) GetActorInbox(context.Context, string, string, string, bool) (vocab.ActivityStreamsOrderedCollectionPage, error) {
-	return nil, fmt.Errorf("GetActorInbox() is unimplemented")
+	return nil, fmt.Errorf("GetInboxAsOrderedCollection() is unimplemented")
 }
 
 func (d *TestDatastore) GetActorInboxAsOrderedCollection(context.Context, string, bool) (vocab.ActivityStreamsOrderedCollection, error) {
@@ -122,7 +122,7 @@ func (d *TestDatastore) GetActorInboxAsOrderedCollection(context.Context, string
 }
 
 func (d *TestDatastore) GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
-	return nil, fmt.Errorf("GetActorOutbox() is unimplemented")
+	return nil, fmt.Errorf("GetOutbox() is unimplemented")
 }
 
 func (d *TestDatastore) GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error) {

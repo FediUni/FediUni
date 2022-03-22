@@ -45,7 +45,7 @@ func NewDatastore(client *mongo.Client, database string, server *url.URL) (*Data
 }
 
 // GetActorByUsername returns an instance of Person from Mongo using Username.
-func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (actor.Person, error) {
+func (d *Datastore) GetActorByUsername(ctx context.Context, username string) (vocab.ActivityStreamsPerson, error) {
 	actors := d.client.Database("FediUni").Collection("actors")
 	filter := bson.D{{"preferredUsername", strings.ToLower(username)}}
 	var m map[string]interface{}

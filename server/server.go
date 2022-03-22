@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/FediUni/FediUni/server/file"
-	"github.com/FediUni/FediUni/server/object"
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/sync/errgroup"
 	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
@@ -42,12 +40,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const (
-	maxProfileImageSize = 5242880 // This represents a value of 5 MiB.
-)
-
 type Datastore interface {
-	GetActorByUsername(context.Context, string) (actor.Person, error)
+	GetActorByUsername(context.Context, string) (vocab.ActivityStreamsPerson, error)
 	GetActivityByObjectID(context.Context, string, string) (vocab.Type, error)
 	GetActivityByActivityID(context.Context, string) (vocab.Type, error)
 	GetFollowersByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
@@ -78,6 +72,7 @@ type Datastore interface {
 type Server struct {
 	URL          *url.URL
 	Router       *chi.Mux
+	Actor        *actor.Server
 	FileHandler  *file.Handler
 	Datastore    Datastore
 	Redis        *redis.Client
@@ -97,12 +92,17 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	if err != nil {
 		return nil, err
 	}
+	client := client.NewClient(instanceURL, "redis:6379", viper.GetString("REDIS_PASSWORD"))
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
 		URL:          instanceURL,
+		Actor:        actor.NewServer(instanceURL, datastore, client, fileHandler),
 		FileHandler:  fileHandler,
 		Datastore:    datastore,
 		KeyGenerator: keyGenerator,
-		Client:       client.NewClient(instanceURL, "redis:6379", viper.GetString("REDIS_PASSWORD")),
+		Client:       client,
 		Redis: redis.NewClient(&redis.Options{
 			Addr:     "redis:6379",
 			Password: viper.GetString("REDIS_PASSWORD"),
@@ -195,31 +195,22 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "username is unspecified", http.StatusBadRequest)
 		return
 	}
-	person, err := s.Datastore.GetActorByUsername(r.Context(), username)
+	statistics := strings.ToLower(r.URL.Query().Get("statistics"))
+	actor, err := s.Actor.GetLocalPerson(ctx, username, statistics == "true")
 	if err != nil {
-		log.Errorf("failed to get actor with ID=%q: got err=%v", username, err)
-		http.Error(w, "failed to load actor", http.StatusNotFound)
+		log.Errorf("failed to fetch local actor with username=%q: got err=%v", username, err)
+		http.Error(w, "Failed to load local actor", http.StatusNotFound)
 		return
 	}
-	statistics := r.URL.Query().Get("statistics")
-	var eg errgroup.Group
-	if strings.ToLower(statistics) == "true" {
-		eg.Go(func() error { return s.Client.DereferenceFollowers(ctx, person.GetActivityStreamsFollowers(), 0, 1) })
-		eg.Go(func() error { return s.Client.DereferenceFollowing(ctx, person.GetActivityStreamsFollowing(), 0, 1) })
-		eg.Go(func() error { return s.Client.DereferenceOutbox(ctx, person.GetActivityStreamsOutbox(), 0, 1) })
-		if err := eg.Wait(); err != nil {
-			log.Errorf("Dereferencing has failed: got err=%v", err)
-		}
-	}
-	serializedPerson, err := streams.Serialize(person)
+	serializedPerson, err := streams.Serialize(actor)
 	if err != nil {
 		log.Errorf("failed to serialize actor with ID=%q: got err=%v", username, err)
-		http.Error(w, "failed to load actor", http.StatusInternalServerError)
+		http.Error(w, "failed to load local actor", http.StatusNotFound)
 	}
 	m, err := json.Marshal(serializedPerson)
 	if err != nil {
 		log.Errorf("failed to marshal actor with ID=%q: got err=%v", username, err)
-		http.Error(w, "failed to load actor", http.StatusInternalServerError)
+		http.Error(w, "failed to load local actor", http.StatusNotFound)
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
@@ -273,42 +264,19 @@ func (s *Server) updateActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to parse profile picture"), http.StatusBadRequest)
 		return
 	}
-	if tempFile != nil && tempFileHeader.Size > maxProfileImageSize {
-		log.Errorf("failed to parse profile picture: got size=%d max size=%d", tempFileHeader.Size, maxProfileImageSize)
-		http.Error(w, fmt.Sprintf("Profile picture is larger than %d MiB", maxProfileImageSize), http.StatusBadRequest)
-		return
-	}
-	var image vocab.ActivityStreamsImage
-	if tempFile != nil {
-		path, err := s.FileHandler.StoreProfilePicture(tempFile, tempFileHeader.Filename)
-		if err != nil {
-			log.Errorf("failed to store profile picture: got err=%v", err)
-			http.Error(w, fmt.Sprintf("Failed to update profile picture"), http.StatusInternalServerError)
-			return
-		}
-		profilePictureURL, err := url.Parse(fmt.Sprintf("%s/static/%s", s.URL.String(), path))
-		if err != nil {
-			log.Errorf("failed to create profile picture path: got err=%v", err)
-			http.Error(w, fmt.Sprintf("Failed to update profile picture"), http.StatusInternalServerError)
-			return
-		}
-		image = streams.NewActivityStreamsImage()
-		urlProperty := streams.NewActivityStreamsUrlProperty()
-		image.SetActivityStreamsUrl(urlProperty)
-		urlProperty.AppendIRI(profilePictureURL)
-		mediaType := streams.NewActivityStreamsMediaTypeProperty()
-		mediaType.Set(fmt.Sprintf("image/%s", strings.ToLower(filepath.Ext(tempFileHeader.Filename)[1:])))
-		image.SetActivityStreamsMediaType(mediaType)
-	}
-	if err := s.Datastore.UpdateActor(ctx, username, displayName, summary, image); err != nil {
-		log.Errorf("failed to update actor: got err=%v", err)
-		http.Error(w, fmt.Sprintf("Failed to update actor"), http.StatusInternalServerError)
+	if err := s.Actor.UpdateLocal(ctx, username, displayName, summary, tempFile, tempFileHeader); err != nil {
+		log.Errorf("failed to update local actor: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to update Actor details"), http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	return
 }
 
+// getAnyActor fetches any remote actor based on the identifier parameter.
+// The identifier is expected to be of the format @username@domain.
+// Webfinger lookup is performed on the domain for the specified actor.
+// If the statistics parameter is specified then additional details are loaded.
 func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	_, _, err := jwtauth.FromContext(ctx)
@@ -323,23 +291,14 @@ func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to receive an actor identifier", http.StatusBadRequest)
 		return
 	}
-	person, err := s.Client.FetchRemotePerson(ctx, identifier)
+	statistics := r.URL.Query().Get("statistics")
+	a, err := s.Actor.GetAny(ctx, identifier, statistics == "true")
 	if err != nil {
-		log.Errorf("failed to retrieve actor: got err=%v", err)
+		log.Errorf("failed to serialize actor: got err=%v", err)
 		http.Error(w, "Failed to load actor", http.StatusInternalServerError)
 		return
 	}
-	statistics := r.URL.Query().Get("statistics")
-	var eg errgroup.Group
-	if strings.ToLower(statistics) == "true" {
-		eg.Go(func() error { return s.Client.DereferenceFollowers(ctx, person.GetActivityStreamsFollowers(), 0, 1) })
-		eg.Go(func() error { return s.Client.DereferenceFollowing(ctx, person.GetActivityStreamsFollowing(), 0, 1) })
-		eg.Go(func() error { return s.Client.DereferenceOutbox(ctx, person.GetActivityStreamsOutbox(), 0, 1) })
-		if err := eg.Wait(); err != nil {
-			log.Errorf("Dereferencing has failed: got err=%v", err)
-		}
-	}
-	m, err := streams.Serialize(person)
+	m, err := streams.Serialize(a)
 	if err != nil {
 		log.Errorf("failed to serialize actor: got err=%v", err)
 		http.Error(w, "Failed to load actor", http.StatusInternalServerError)
@@ -366,64 +325,25 @@ func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
 	identifier := r.URL.Query().Get("identifier")
 	if identifier == "" {
 		log.Errorf("failed to receive identifier: got=%q", identifier)
-		http.Error(w, "Failed to receive an actor identifier", http.StatusBadRequest)
+		http.Error(w, "Failed to receive an Actor identifier", http.StatusBadRequest)
 		return
 	}
-	person, err := s.Client.FetchRemotePerson(r.Context(), identifier)
+	page, err := s.Actor.GetAnyOutbox(ctx, identifier, 0)
 	if err != nil {
-		log.Errorf("failed to fetch a remote actor=%q: got err=%v", identifier, err)
-		http.Error(w, "Failed to load actor", http.StatusNotFound)
-		return
-	}
-	personID := person.GetJSONLDId().Get()
-	log.Infof("Loading outbox of actor ID=%q", person.GetJSONLDId().Get().String())
-	outbox := person.GetActivityStreamsOutbox()
-	if outbox == nil {
-		log.Errorf("failed to load outbox: got=%v", outbox)
-		http.Error(w, "Failed to load outbox", http.StatusNotFound)
-		return
-	}
-	outboxIRI := outbox.GetIRI()
-	if outboxIRI == nil {
-		log.Errorf("failed to load outbox URL: got=%v", outboxIRI)
-		http.Error(w, "Failed to load outbox", http.StatusNotFound)
-		return
-	}
-	log.Infof("Fetching outbox collection of actor ID=%q", personID.String())
-	o, err := s.Client.FetchRemoteObject(ctx, outboxIRI, false, 0, 1)
-	if err != nil {
-		log.Errorf("Failed to fetch remote object: got err=%v", err)
-		http.Error(w, "Failed to load outbox", http.StatusNotFound)
-		return
-	}
-	orderedCollection, err := object.ParseOrderedCollection(ctx, o)
-	if err != nil {
-		log.Errorf("failed to parse OrderedCollection: got err=%v", err)
-		http.Error(w, "Failed to load outbox", http.StatusNotFound)
-		return
-	}
-	log.Infof("Dereferencing outbox collection ID=%q of actor ID=%q", outboxIRI.String(), personID.String())
-	page, err := s.Client.DereferenceObjectsInOrderedCollection(ctx, orderedCollection, 0, 0, 3)
-	if err != nil {
-		log.Errorf("failed to dereference OrderedCollection: got err=%v", err)
-		http.Error(w, "Failed to load outbox", http.StatusNotFound)
-		return
-	}
-	if page == nil {
-		log.Errorf("page of OrderedCollection=%v", page)
-		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		log.Errorf("failed to get Actor=%q Outbox: got err=%v", identifier, err)
+		http.Error(w, "Failed to load Outbox", http.StatusNotFound)
 		return
 	}
 	m, err := streams.Serialize(page)
 	if err != nil {
 		log.Errorf("failed to serialize %v: got err=%v", page, err)
-		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		http.Error(w, "Failed to load Outbox", http.StatusNotFound)
 		return
 	}
 	serializedOutbox, err := json.Marshal(m)
 	if err != nil {
 		log.Errorf("failed to serialize %v: got err=%v", m, err)
-		http.Error(w, "Failed to load outbox", http.StatusNotFound)
+		http.Error(w, "Failed to load Outbox", http.StatusNotFound)
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
@@ -436,25 +356,26 @@ func (s *Server) getFollowers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "username is unspecified", http.StatusBadRequest)
 		return
 	}
-	followers, err := s.Datastore.GetFollowersByUsername(r.Context(), username)
+	followers, err := s.Actor.GetFollowers(r.Context(), username)
 	if err != nil {
 		log.Errorf("failed to load followers from Datastore: got err=%v", err)
-		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
 	m, err := streams.Serialize(followers)
 	if err != nil {
 		log.Errorf("failed to serialize activity : got err=%v", err)
-		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
 	marshalledActivity, err := json.Marshal(m)
 	if err != nil {
 		log.Errorf("failed to marshal activity to JSON: got err=%v", err)
-		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
+	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledActivity)
 }
 
@@ -464,26 +385,148 @@ func (s *Server) getFollowing(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "username is unspecified", http.StatusBadRequest)
 		return
 	}
-	followers, err := s.Datastore.GetFollowingByUsername(r.Context(), username)
+	followers, err := s.Actor.GetFollowing(r.Context(), username)
 	if err != nil {
 		log.Errorf("failed to load followers from Datastore: got err=%v", err)
-		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
 	m, err := streams.Serialize(followers)
 	if err != nil {
 		log.Errorf("failed to serialize activity : got err=%v", err)
-		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
 	marshalledActivity, err := json.Marshal(m)
 	if err != nil {
 		log.Errorf("failed to marshal activity to JSON: got err=%v", err)
-		http.Error(w, "failed to load followers", http.StatusInternalServerError)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
+	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledActivity)
+}
+
+func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
+	jwtUsername, err := parseJWTUsername(claims)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
+	if username != jwtUsername {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
+	page := strings.ToLower(r.URL.Query().Get("page")) == "true"
+	local := strings.ToLower(r.URL.Query().Get("local")) == "true"
+	maxID := r.URL.Query().Get("max_id")
+	if maxID == "" {
+		maxID = "0"
+	}
+	minID := r.URL.Query().Get("min_id")
+	if minID == "" {
+		minID = "0"
+	}
+	var inbox vocab.Type
+	if !page {
+		log.Infoln("Getting Inbox as OrderedCollection")
+		inbox, err = s.Actor.GetInboxAsOrderedCollection(ctx, username, local)
+		if err != nil {
+			log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
+			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		log.Infoln("Getting Inbox as OrderedCollectionPage")
+		inbox, err = s.Actor.GetInboxPage(ctx, username, minID, maxID, local)
+		if err != nil {
+			log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
+			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+			return
+		}
+	}
+	serializedInbox, err := streams.Serialize(inbox)
+	if err != nil {
+		log.Errorf("Failed to serialize Inbox of Username=%q: got err=%v", username, err)
+		http.Error(w, fmt.Sprintf("Failed to load Actor Inbox"), http.StatusInternalServerError)
+		return
+	}
+	marshalledOrderedCollection, err := json.Marshal(serializedInbox)
+	if err != nil {
+		log.Errorf("Failed to marshal Inbox of Username=%q: got err=%v", username, err)
+		http.Error(w, fmt.Sprintf("Failed to load Actor Inbox"), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledOrderedCollection)
+}
+
+func (s *Server) getPublicInbox(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, _, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
+	page := strings.ToLower(r.URL.Query().Get("page")) == "true"
+	local := strings.ToLower(r.URL.Query().Get("local")) == "true"
+	institute := strings.ToLower(r.URL.Query().Get("institute")) == "true"
+	maxID := r.URL.Query().Get("max_id")
+	if maxID == "" {
+		maxID = "0"
+	}
+	minID := r.URL.Query().Get("min_id")
+	if minID == "" {
+		minID = "0"
+	}
+	var inbox vocab.Type
+	if !page {
+		inbox, err = s.Datastore.GetPublicInboxAsOrderedCollection(ctx, local, institute)
+		if err != nil {
+			log.Errorf("Failed to read from Public Inbox: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		inbox, err = s.Datastore.GetPublicInbox(ctx, minID, maxID, local, institute)
+		if err != nil {
+			log.Errorf("Failed to read from Public Inbox: got err=%v", err)
+			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
+			return
+		}
+	}
+	serializedInbox, err := streams.Serialize(inbox)
+	if err != nil {
+		log.Errorf("Failed to serialize Public Inbox: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to load Public Inbox"), http.StatusInternalServerError)
+		return
+	}
+	marshalledInbox, err := json.Marshal(serializedInbox)
+	if err != nil {
+		log.Errorf("Failed to marshal Public Inbox: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to load Public Inbox"), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledInbox)
 }
 
 func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
@@ -515,56 +558,58 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 	w.Write(marshalledActivity)
 }
 
-// GetAnyActivity fetches the remote Activity and forces an update.
-func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
+// getActorOutbox returns activities posted by the actor as OrderedCollectionPages.
+// When the "page" query parameter is unset, an OrderedCollection is returned.
+// When the max_id or min_id is set, activities with an object ID strictly less
+// than or greater than the specified ObjectID are returned.
+func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	_, _, err := jwtauth.FromContext(ctx)
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	page := strings.ToLower(r.URL.Query().Get("page")) == "true"
+	maxID := r.URL.Query().Get("max_id")
+	if maxID == "" {
+		maxID = "0"
+	}
+	minID := r.URL.Query().Get("min_id")
+	if minID == "" {
+		minID = "0"
+	}
+	var outbox vocab.Type
+	var err error
+	if !page {
+		outbox, err = s.Actor.GetOutbox(ctx, username)
+		if err != nil {
+			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", username, err)
+			http.Error(w, fmt.Sprintf("Failed to load Actor inbox"), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		outbox, err = s.Actor.GetOutboxPage(ctx, username, minID, maxID)
+		if err != nil {
+			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", username, err)
+			http.Error(w, fmt.Sprintf("Failed to load Actor inbox"), http.StatusInternalServerError)
+			return
+		}
+	}
+	serializedOutbox, err := streams.Serialize(outbox)
 	if err != nil {
-		log.Errorf("Failed to read from JWT: got err=%v", err)
-		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		log.Errorf("Failed to serialize Outbox of Actor ID=%q: got err=%v", username, err)
+		http.Error(w, fmt.Sprintf("Failed to load Actor Outbox"), http.StatusInternalServerError)
 		return
 	}
-	activity := r.URL.Query().Get("id")
-	if activity == "" {
-		http.Error(w, "Activity ID is unspecified", http.StatusBadRequest)
-		return
-	}
-	activityID, err := url.Parse(activity)
+	marshalledOutbox, err := json.Marshal(serializedOutbox)
 	if err != nil {
-		http.Error(w, "Activity ID is not a URL", http.StatusBadRequest)
-		return
-	}
-	maxDepth := 2
-	if r.URL.Query().Get("replies") == strings.ToLower("true") {
-		log.Infof("Fetching replies on Activity ID=%q", activityID.String())
-		maxDepth += 2
-	}
-	object, err := s.Client.FetchRemoteObject(ctx, activityID, true, 0, maxDepth)
-	if err != nil {
-		log.Errorf("Failed to retrieve object ID=%q: got err=%v", activityID, err)
-		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
-		return
-	}
-	switch object.GetTypeName() {
-	case "Create":
-	case "Announce":
-	default:
-		http.Error(w, "Failed to retrieve a Create or Announce activity", http.StatusBadRequest)
-		return
-	}
-	serializedActivity, err := streams.Serialize(object)
-	if err != nil {
-		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
-		return
-	}
-	marshalledActivity, err := json.Marshal(serializedActivity)
-	if err != nil {
-		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
+		log.Errorf("Failed to marshal Outbox of Actor ID=%q: got err=%v", username, err)
+		http.Error(w, fmt.Sprintf("Failed to load Actor Outbox"), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledActivity)
+	w.Write(marshalledOutbox)
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
@@ -667,7 +712,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
-func (s *Server) getPublicInbox(w http.ResponseWriter, r *http.Request) {
+// GetAnyActivity fetches the remote Activity and forces an update.
+func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	_, _, err := jwtauth.FromContext(ctx)
 	if err != nil {
@@ -675,226 +721,47 @@ func (s *Server) getPublicInbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
 		return
 	}
-	page := r.URL.Query().Get("page")
-	var local, institute bool
-	if l := r.URL.Query().Get("local"); strings.ToLower(l) == "true" {
-		local = true
-	}
-	if i := r.URL.Query().Get("institute"); strings.ToLower(i) == "true" {
-		institute = true
-	}
-	if strings.ToLower(page) != "true" {
-		orderedCollection, err := s.Datastore.GetPublicInboxAsOrderedCollection(ctx, local, institute)
-		if err != nil {
-			log.Errorf("Failed to read from Public Inbox: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
-			return
-		}
-		serializedOrderedCollection, err := streams.Serialize(orderedCollection)
-		if err != nil {
-			log.Errorf("Failed to serialize Ordered Collection of Public Inbox: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
-			return
-		}
-		marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
-		if err != nil {
-			log.Errorf("Failed to marshal Ordered Collection of Public Inbox: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Add("Content-Type", "application/activity+json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(marshalledOrderedCollection)
+	activity := r.URL.Query().Get("id")
+	if activity == "" {
+		http.Error(w, "Activity ID is unspecified", http.StatusBadRequest)
 		return
 	}
-	maxID := r.URL.Query().Get("max_id")
-	if maxID == "" {
-		maxID = "0"
-	}
-	minID := r.URL.Query().Get("min_id")
-	if minID == "" {
-		minID = "0"
-	}
-	orderedCollectionPage, err := s.Datastore.GetPublicInbox(ctx, minID, maxID, local, institute)
+	activityID, err := url.Parse(activity)
 	if err != nil {
-		log.Errorf("Failed to read from Public Inbox: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
+		http.Error(w, "Activity ID is not a URL", http.StatusBadRequest)
 		return
 	}
-	serializedOrderedCollection, err := streams.Serialize(orderedCollectionPage)
+	maxDepth := 2
+	if r.URL.Query().Get("replies") == strings.ToLower("true") {
+		log.Infof("Fetching replies on Activity ID=%q", activityID.String())
+		maxDepth += 2
+	}
+	object, err := s.Client.FetchRemoteObject(ctx, activityID, true, 0, maxDepth)
 	if err != nil {
-		log.Errorf("Failed to serialize Ordered Collection Page of Public Inbox: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to load public inbox page"), http.StatusInternalServerError)
+		log.Errorf("Failed to retrieve object ID=%q: got err=%v", activityID, err)
+		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
 		return
 	}
-	marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
+	switch object.GetTypeName() {
+	case "Create":
+	case "Announce":
+	default:
+		http.Error(w, "Failed to retrieve a Create or Announce activity", http.StatusBadRequest)
+		return
+	}
+	serializedActivity, err := streams.Serialize(object)
 	if err != nil {
-		log.Errorf("Failed to marshal Ordered Collection Page of Public Inbox: got err=%v", err)
-		http.Error(w, fmt.Sprintf("failed to load public inbox page"), http.StatusInternalServerError)
+		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
+		return
+	}
+	marshalledActivity, err := json.Marshal(serializedActivity)
+	if err != nil {
+		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledOrderedCollection)
-}
-
-func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	username := chi.URLParam(r, "username")
-	if username == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	_, claims, err := jwtauth.FromContext(ctx)
-	if err != nil {
-		log.Errorf("Failed to read from JWT: got err=%v", err)
-		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
-		return
-	}
-	jwtUsername, err := parseJWTUsername(claims)
-	if err != nil {
-		log.Errorf("Failed to read from JWT: got err=%v", err)
-		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
-		return
-	}
-	if username != jwtUsername {
-		log.Errorf("Failed to read from JWT: got err=%v", err)
-		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
-		return
-	}
-	page := r.URL.Query().Get("page")
-	var local bool
-	if l := r.URL.Query().Get("local"); strings.ToLower(l) == "true" {
-		local = true
-	}
-	if strings.ToLower(page) != "true" {
-		orderedCollection, err := s.Datastore.GetActorInboxAsOrderedCollection(ctx, username, local)
-		if err != nil {
-			log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
-			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-			return
-		}
-		serializedOrderedCollection, err := streams.Serialize(orderedCollection)
-		if err != nil {
-			log.Errorf("Failed to serialize Ordered Collection Inbox of Username=%q: got err=%v", username, err)
-			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-			return
-		}
-		marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
-		if err != nil {
-			log.Errorf("Failed to marshal Ordered Collection Inbox of Username=%q: got err=%v", username, err)
-			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Add("Content-Type", "application/activity+json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(marshalledOrderedCollection)
-		return
-	}
-	maxID := r.URL.Query().Get("max_id")
-	if maxID == "" {
-		maxID = "0"
-	}
-	minID := r.URL.Query().Get("min_id")
-	if minID == "" {
-		minID = "0"
-	}
-	orderedCollectionPage, err := s.Datastore.GetActorInbox(ctx, username, minID, maxID, local)
-	if err != nil {
-		log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-		return
-	}
-	orderedItems := orderedCollectionPage.GetActivityStreamsOrderedItems()
-	for iter := orderedItems.Begin(); iter != orderedItems.End(); iter = iter.Next() {
-		switch {
-		case iter.IsActivityStreamsCreate():
-			s.Client.Note(ctx, iter.GetActivityStreamsNote(), 0, 2)
-		case iter.IsActivityStreamsAnnounce():
-		}
-	}
-	serializedOrderedCollection, err := streams.Serialize(orderedCollectionPage)
-	if err != nil {
-		log.Errorf("Failed to serialize Ordered Collection Page Inbox of Username=%q: got err=%v", username, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
-		return
-	}
-	marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
-	if err != nil {
-		log.Errorf("Failed to marshal Ordered Collection Page Inbox of Username=%q: got err=%v", username, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Add("Content-Type", "application/activity+json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledOrderedCollection)
-}
-
-// getActorOutbox returns activities posted by the actor as OrderedCollectionPages.
-// When the "page" query parameter is unset, an OrderedCollection is returned.
-// When the max_id or min_id is set, activities with an object ID strictly less
-// than or greater than the specified ObjectID are returned.
-func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	username := chi.URLParam(r, "username")
-	if username == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	page := r.URL.Query().Get("page")
-	if strings.ToLower(page) != "true" {
-		orderedCollection, err := s.Datastore.GetActorOutboxAsOrderedCollection(ctx, username)
-		if err != nil {
-			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", username, err)
-			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-			return
-		}
-		serializedOrderedCollection, err := streams.Serialize(orderedCollection)
-		if err != nil {
-			log.Errorf("Failed to serialize Ordered Collection Inbox of Actor ID=%q: got err=%v", username, err)
-			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-			return
-		}
-		marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
-		if err != nil {
-			log.Errorf("Failed to marshal Ordered Collection Inbox of Actor ID=%q: got err=%v", username, err)
-			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Add("Content-Type", "application/activity+json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(marshalledOrderedCollection)
-		return
-	}
-	maxID := r.URL.Query().Get("max_id")
-	if maxID == "" {
-		maxID = "0"
-	}
-	minID := r.URL.Query().Get("min_id")
-	if minID == "" {
-		minID = "0"
-	}
-	orderedCollectionPage, err := s.Datastore.GetActorOutbox(ctx, username, minID, maxID)
-	if err != nil {
-		log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", username, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-		return
-	}
-	serializedOrderedCollection, err := streams.Serialize(orderedCollectionPage)
-	if err != nil {
-		log.Errorf("Failed to serialize Ordered Collection Page Inbox of Actor ID=%q: got err=%v", username, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
-		return
-	}
-	marshalledOrderedCollection, err := json.Marshal(serializedOrderedCollection)
-	if err != nil {
-		log.Errorf("Failed to marshal Ordered Collection Page Inbox of Actor ID=%q: got err=%v", username, err)
-		http.Error(w, fmt.Sprintf("failed to load actor inbox page"), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Add("Content-Type", "application/activity+json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledOrderedCollection)
+	w.Write(marshalledActivity)
 }
 
 func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
