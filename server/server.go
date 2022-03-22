@@ -144,19 +144,19 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor", s.getAnyActor)
 	activitypubRouter.Get("/actor/{username}", s.getActor)
-	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/actor/{username}/update", s.updateActor)
-	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/outbox", s.getAnyActorOutbox)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/{username}/inbox", s.getActorInbox)
 	activitypubRouter.With(validation.Signature).Post("/actor/{username}/inbox", s.receiveToActorInbox)
 	activitypubRouter.Get("/actor/{username}/outbox", s.getActorOutbox)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/actor/{username}/outbox", s.postActorOutbox)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/actor/{username}/update", s.updateActor)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/outbox", s.getAnyActorOutbox)
 	activitypubRouter.Get("/actor/{username}/followers", s.getFollowers)
 	activitypubRouter.Get("/actor/{username}/following", s.getFollowing)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/inbox", s.getPublicInbox)
 
 	activitypubRouter.Post("/register", s.createUser)
 	activitypubRouter.Post("/login", s.login)
 
-	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/inbox", s.getPublicInbox)
 	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/activity", s.getAnyActivity)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
