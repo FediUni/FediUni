@@ -399,21 +399,28 @@ func (c *Client) DereferenceActor(ctx context.Context, actor vocab.ActivityStrea
 	}
 	for iter := actor.Begin(); iter != actor.End(); iter = iter.Next() {
 		var actorID *url.URL
+		var err error
 		switch {
 		case iter.IsIRI():
 			actorID = iter.GetIRI()
 			if actorID == nil {
-				log.Errorf("unexpected IRI in Actor Field: got Actor ID=%v", actorID)
-				break
+				return fmt.Errorf("unexpected IRI in AttributedTo Field: got Object ID=%v", actorID)
 			}
-			a, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, maxDepth)
+		case iter.HasAny():
+			a := iter.GetType()
+			actorID, err = pub.GetId(a)
 			if err != nil {
-				log.Errorf("failed to fetch remote Actor with ID=%q", actorID.String())
-				break
+				return fmt.Errorf("failed to get ID of actor: err=%v", err)
 			}
-			iter.SetType(a)
 		default:
-			log.Infof("Actor is not an IRI: skipping dereferencing actor")
+			return fmt.Errorf("failed to receive any Object")
+		}
+		a, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, maxDepth)
+		if err != nil {
+			return fmt.Errorf("failed to fetch remote Object with ID=%q", actorID.String())
+		}
+		if err := iter.SetType(a); err != nil {
+			return fmt.Errorf("failed to set type on Object with ID=%q", actorID.String())
 		}
 	}
 	return nil
@@ -433,7 +440,6 @@ func (c *Client) DereferenceAttributedTo(ctx context.Context, attributedTo vocab
 			if actorID == nil {
 				return fmt.Errorf("unexpected IRI in AttributedTo Field: got Object ID=%v", actorID)
 			}
-
 		case iter.HasAny():
 			a := iter.GetType()
 			actorID, err = pub.GetId(a)
