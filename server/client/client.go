@@ -156,6 +156,7 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 	return object, nil
 }
 
+// ResolveActorIdentifierToID converts an identifier to an ID using Webfinger.
 func (c *Client) ResolveActorIdentifierToID(ctx context.Context, identifier string) (*url.URL, error) {
 	isIdentifier, err := actor.IsIdentifier(identifier)
 	if err != nil {
@@ -233,6 +234,7 @@ func (c *Client) FetchRemoteActor(ctx context.Context, identifier string) (actor
 	}
 }
 
+// FetchFollowers determines the actors that follow a given person.
 func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab.ActivityStreamsPerson, error) {
 	person, err := c.FetchRemotePerson(ctx, identifier)
 	if err != nil {
@@ -289,6 +291,8 @@ func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab
 	return dereferencedFollowers, nil
 }
 
+// PostToInbox converts any activity to JSON and delivers to the inbox.
+// Handles HTTP signatures.
 func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.Type, keyID string, privateKey *rsa.PrivateKey) error {
 	marshalledActivity, err := activity.JSON(object)
 	if err != nil {
@@ -329,8 +333,9 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 	return nil
 }
 
-func (c *Client) WebfingerLookup(ctx context.Context, domain string, actorID string) (*WebfingerResponse, error) {
-	webfingerURL, err := url.Parse(fmt.Sprintf("https://%s/.well-known/webfinger?resource=%s", domain, fmt.Sprintf("acct:%s@%s", actorID, domain)))
+// WebfingerLookup determines if an actor exists on an instance.
+func (c *Client) WebfingerLookup(ctx context.Context, domain string, username string) (*WebfingerResponse, error) {
+	webfingerURL, err := url.Parse(fmt.Sprintf("https://%s/.well-known/webfinger?resource=%s", domain, fmt.Sprintf("acct:%s@%s", username, domain)))
 	if err != nil {
 		return nil, err
 	}
@@ -362,6 +367,7 @@ type InstanceDetails struct {
 	Institute string
 }
 
+// LookupInstanceDetails checks if the URL is a FediUni instance.
 func (c *Client) LookupInstanceDetails(ctx context.Context, instanceURL *url.URL) (*InstanceDetails, error) {
 	detailsEndpoint, err := url.Parse(fmt.Sprintf("https://%s/api/instance", instanceURL.Host))
 	if err != nil {
@@ -386,6 +392,7 @@ func (c *Client) LookupInstanceDetails(ctx context.Context, instanceURL *url.URL
 	return details, nil
 }
 
+// DereferenceActor dereferences the Actor property by fetching from an IRI.
 func (c *Client) DereferenceActor(ctx context.Context, actor vocab.ActivityStreamsActorProperty, depth, maxDepth int) error {
 	if actor == nil {
 		return fmt.Errorf("cannot dereference Actor field: got Actor=%v", actor)
@@ -515,7 +522,9 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 	return nil
 }
 
-// Note dereferences the actors of type Person in attributedTo.
+// Note dereferences the fields up to the specified maxDepth on a Note.
+// Dereferences "attributedTo" and "replies". The first and second page of the
+// replies are dereferenced by default.
 func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth int, maxDepth int) error {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if note == nil {
@@ -776,6 +785,7 @@ func (c *Client) DereferenceObjectsInOrderedCollection(ctx context.Context, coll
 	return currentPage, nil
 }
 
+// DereferenceOutbox fetches the outbox at a given IRI and dereferences items.
 func (c *Client) DereferenceOutbox(ctx context.Context, outbox vocab.ActivityStreamsOutboxProperty, depth, maxDepth int) error {
 	if outbox == nil {
 		return fmt.Errorf("cannot dereference Outbox field: got Outbox=%v", outbox)
@@ -801,6 +811,7 @@ func (c *Client) DereferenceOutbox(ctx context.Context, outbox vocab.ActivityStr
 	return nil
 }
 
+// DereferenceFollowing fetches the collection and dereferences items.
 func (c *Client) DereferenceFollowing(ctx context.Context, following vocab.ActivityStreamsFollowingProperty, depth, maxDepth int) error {
 	if following == nil {
 		return fmt.Errorf("cannot dereference Following field: got Outbox=%v", following)
@@ -826,6 +837,7 @@ func (c *Client) DereferenceFollowing(ctx context.Context, following vocab.Activ
 	return nil
 }
 
+// DereferenceFollowers fetches the collection and dereferences items.
 func (c *Client) DereferenceFollowers(ctx context.Context, followers vocab.ActivityStreamsFollowersProperty, depth, maxDepth int) error {
 	if followers == nil {
 		return fmt.Errorf("cannot dereference Followers field: got Outbox=%v", followers)
@@ -851,6 +863,8 @@ func (c *Client) DereferenceFollowers(ctx context.Context, followers vocab.Activ
 	return nil
 }
 
+// DereferenceItems fetches and dereferences objects in orderedItems.
+// This is performed concurrently up to some limit.
 func (c *Client) DereferenceItems(ctx context.Context, items vocab.ActivityStreamsItemsProperty, depth int, maxDepth int) error {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	itemsDereferenced := 0
@@ -899,6 +913,8 @@ func (c *Client) DereferenceItems(ctx context.Context, items vocab.ActivityStrea
 	return nil
 }
 
+// DereferenceOrderedItems fetches and dereferences objects in orderedItems.
+// This is performed concurrently up to some limit.
 func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.ActivityStreamsOrderedItemsProperty, depth int, maxDepth int) error {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	itemsDereferenced := 0
@@ -952,6 +968,7 @@ func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.Activi
 	return nil
 }
 
+// DereferenceItem will dereference activities and objects received.
 func (c *Client) DereferenceItem(ctx context.Context, item vocab.Type, depth int, maxDepth int) (vocab.Type, error) {
 	switch item.GetTypeName() {
 	case "Create":
