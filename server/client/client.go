@@ -412,27 +412,36 @@ func (c *Client) DereferenceActor(ctx context.Context, actor vocab.ActivityStrea
 	return nil
 }
 
+// DereferenceAttributedTo fetches the actors or objects in attributedTo field.
 func (c *Client) DereferenceAttributedTo(ctx context.Context, attributedTo vocab.ActivityStreamsAttributedToProperty, depth, maxDepth int) error {
 	if attributedTo == nil {
 		return fmt.Errorf("cannot dereference AttributedTo field: got AttributedTo=%v", attributedTo)
 	}
 	for iter := attributedTo.Begin(); iter != attributedTo.End(); iter = iter.Next() {
 		var actorID *url.URL
+		var err error
 		switch {
 		case iter.IsIRI():
 			actorID = iter.GetIRI()
 			if actorID == nil {
-				log.Errorf("unexpected IRI in AttributedTo Field: got Object ID=%v", actorID)
-				break
+				return fmt.Errorf("unexpected IRI in AttributedTo Field: got Object ID=%v", actorID)
 			}
-			a, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, maxDepth)
+
+		case iter.HasAny():
+			a := iter.GetType()
+			actorID, err = pub.GetId(a)
 			if err != nil {
-				log.Errorf("failed to fetch remote Object with ID=%q", actorID.String())
-				break
+				return fmt.Errorf("failed to get ID of actor: err=%v", err)
 			}
-			iter.SetType(a)
 		default:
-			log.Infof("Object is not an IRI: skipping dereferencing Object")
+			return fmt.Errorf("failed to receive any Object")
+		}
+		a, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, maxDepth)
+		if err != nil {
+			return fmt.Errorf("failed to fetch remote Object with ID=%q", actorID.String())
+		}
+		if err := iter.SetType(a); err != nil {
+			return fmt.Errorf("failed to set type on Object with ID=%q", actorID.String())
 		}
 	}
 	return nil
