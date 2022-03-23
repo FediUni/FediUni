@@ -498,14 +498,14 @@ func (s *Server) getPublicInbox(w http.ResponseWriter, r *http.Request) {
 	}
 	var inbox vocab.Type
 	if !page {
-		inbox, err = s.Datastore.GetPublicInboxAsOrderedCollection(ctx, local, institute)
+		inbox, err = s.Actor.GetPublicInboxAsOrderedCollection(ctx, local, institute)
 		if err != nil {
 			log.Errorf("Failed to read from Public Inbox: got err=%v", err)
 			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		inbox, err = s.Datastore.GetPublicInbox(ctx, minID, maxID, local, institute)
+		inbox, err = s.Actor.GetPublicInboxPage(ctx, minID, maxID, local, institute)
 		if err != nil {
 			log.Errorf("Failed to read from Public Inbox: got err=%v", err)
 			http.Error(w, fmt.Sprintf("failed to load public inbox"), http.StatusInternalServerError)

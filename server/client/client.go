@@ -942,7 +942,7 @@ func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.Activi
 			if itemID == nil {
 				return nil
 			}
-			log.Infof("%s Dereferencing Item ID = %q", prefix, itemID.String())
+			log.Infof("%s Dereferencing Item ID=%q", prefix, itemID.String())
 			item, err := c.FetchRemoteObject(ctx, itemID, false, depth+1, maxDepth)
 			if err != nil {
 				return fmt.Errorf("%s Failed to fetch object ID=%q", prefix, itemID.String())
