@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/FediUni/FediUni/server/file"
+	"github.com/FediUni/FediUni/server/object"
 	"github.com/google/go-cmp/cmp"
 	"io/ioutil"
 	"net/http"
@@ -823,7 +824,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	object, err := streams.ToType(ctx, m)
+	rawObject, err := streams.ToType(ctx, m)
 	if err != nil {
 		log.Errorf("failed to convert JSON to activitypub type: got err=%v", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -835,21 +836,36 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("actor does not exist"), http.StatusInternalServerError)
 		return
 	}
-	switch typeName := object.GetTypeName(); typeName {
-	case "Note":
-		var note vocab.ActivityStreamsNote
-		noteResolver, err := streams.NewTypeResolver(func(ctx context.Context, n vocab.ActivityStreamsNote) error {
-			note = n
-			return nil
-		})
+	var toDeliver activity.Activity
+	var isReply, isPublic bool
+	objectID := primitive.NewObjectID()
+	id, err := url.Parse(fmt.Sprintf("%s/activity/%s", s.URL.String(), objectID.Hex()))
+	if err != nil {
+		log.Errorf("failed to add activities to datastore: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
+		return
+	}
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	switch typeName := rawObject.GetTypeName(); typeName {
+	case "Like":
+		like, err := activity.ParseLikeActivity(ctx, rawObject)
 		if err != nil {
-			log.Errorf("failed to create Note resolver: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to send Note"), http.StatusInternalServerError)
+			log.Errorf("Failed to parse Like activity: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
 			return
 		}
-		if err := noteResolver.Resolve(ctx, object); err != nil {
-			log.Errorf("failed to resolve object to note: got err=%v", err)
-			http.Error(w, fmt.Sprintf("type mismatch: object is not a note"), http.StatusBadRequest)
+		like.SetJSONLDId(idProperty)
+		actor := streams.NewActivityStreamsActorProperty()
+		actor.AppendActivityStreamsPerson(person)
+		like.SetActivityStreamsActor(actor)
+		toDeliver = like
+	case "Note":
+		note, err := object.ParseNote(ctx, rawObject)
+		note.SetJSONLDId(idProperty)
+		if err != nil {
+			log.Errorf("Failed to parse Note Object: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Note"), http.StatusBadRequest)
 			return
 		}
 		for iter := note.GetActivityStreamsAttributedTo().Begin(); iter != nil; iter = iter.Next() {
@@ -861,76 +877,8 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		objectID := primitive.NewObjectID()
-		id, err := url.Parse(fmt.Sprintf("%s/activity/%s", s.URL.String(), objectID.Hex()))
-		if err != nil {
-			log.Errorf("failed to add activities to datastore: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
-			return
-		}
-		idProperty := streams.NewJSONLDIdProperty()
-		idProperty.Set(id)
-		create := streams.NewActivityStreamsCreate()
+		create, err := object.WrapInCreate(ctx, note, person)
 		create.SetJSONLDId(idProperty)
-		note.SetJSONLDId(idProperty)
-		object := streams.NewActivityStreamsObjectProperty()
-		object.AppendActivityStreamsNote(note)
-		create.SetActivityStreamsObject(object)
-		actor := streams.NewActivityStreamsActorProperty()
-		actor.AppendActivityStreamsPerson(person)
-		create.SetActivityStreamsActor(actor)
-		create.SetActivityStreamsPublished(note.GetActivityStreamsPublished())
-		create.SetActivityStreamsTo(note.GetActivityStreamsTo())
-		create.SetActivityStreamsCc(note.GetActivityStreamsCc())
-		if err := s.Datastore.AddActivityToActivities(ctx, create, objectID); err != nil {
-			log.Errorf("failed to add activities to datastore: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
-			return
-		}
-		if err := s.Datastore.AddActivityToOutbox(ctx, create, username); err != nil {
-			log.Errorf("failed to add activities to datastore: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
-			return
-		}
-		followers, err := s.Client.FetchFollowers(ctx, identifier)
-		if err != nil {
-			log.Errorf("failed to fetch followers: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to post messages"), http.StatusInternalServerError)
-			return
-		}
-		// Post to own inbox to allow user to view their own activities.
-		inboxes := []*url.URL{person.GetActivityStreamsInbox().GetIRI()}
-		for _, follower := range followers {
-			switch inbox := follower.GetActivityStreamsInbox(); {
-			case inbox == nil:
-				log.Infof("Inbox of Actor=%q is unset: got %v", follower.GetJSONLDId().Get(), inbox)
-				continue
-			case inbox.IsIRI():
-				log.Infof("Appending %q to list of inboxes", inbox.GetIRI().String())
-				inboxes = append(inboxes, inbox.GetIRI())
-			default:
-				log.Infof("Unexpected value in inbox: got=%v", inbox)
-			}
-		}
-		privateKey, err := s.readPrivateKey(username)
-		if err != nil {
-			log.Errorf("failed to read private key: got err=%v", err)
-			http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
-			return
-		}
-		if person.GetW3IDSecurityV1PublicKey().Empty() {
-			log.Errorf("failed to get public key ID: got=%v", person.GetW3IDSecurityV1PublicKey())
-			http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
-			return
-		}
-		publicKeyID := person.GetW3IDSecurityV1PublicKey().Begin().Get().GetJSONLDId().Get().String()
-		for _, inbox := range inboxes {
-			log.Infof("Posting Create Activity to Inbox=%q", inbox.String())
-			if err := s.Client.PostToInbox(ctx, inbox, create, publicKeyID, privateKey); err != nil {
-				log.Errorf("failed to post to inbox=%q: got err=%v", inbox.String(), err)
-			}
-		}
-		isReply := false
 		if inReplyToProperty := note.GetActivityStreamsInReplyTo(); inReplyToProperty != nil {
 			for iter := inReplyToProperty.Begin(); iter != inReplyToProperty.End(); iter = iter.Next() {
 				if iter.IsIRI() && iter.GetIRI() != nil {
@@ -939,13 +887,13 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		for iter := create.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
+		for iter := note.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
 			if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
-				if err := s.Datastore.AddActivityToPublicInbox(ctx, create, primitive.NewObjectID(), isReply); err != nil {
-					log.Errorf("failed to add activity to public inbox: got err=%v", err)
-				}
+				isPublic = true
+				break
 			}
 		}
+		toDeliver = create
 	case "Image":
 		http.Error(w, fmt.Sprintf("support for Image is unimplemented"), http.StatusNotImplemented)
 		return
@@ -953,7 +901,44 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("unsupported type received"), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	if err := s.Datastore.AddActivityToActivities(ctx, toDeliver, objectID); err != nil {
+		log.Errorf("failed to add activities to datastore: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
+		return
+	}
+	if err := s.Datastore.AddActivityToOutbox(ctx, toDeliver, username); err != nil {
+		log.Errorf("failed to add activities to datastore: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to post activity"), http.StatusInternalServerError)
+		return
+	}
+	inboxes, err := s.Client.DereferenceRecipientInboxes(ctx, toDeliver)
+	// Post to own inbox to allow user to view their own activities.
+	inboxes = append(inboxes, person.GetActivityStreamsInbox().GetIRI())
+	privateKey, err := s.readPrivateKey(username)
+	if err != nil {
+		log.Errorf("failed to read private key: got err=%v", err)
+		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
+		return
+	}
+	if person.GetW3IDSecurityV1PublicKey().Empty() {
+		log.Errorf("failed to get public key ID: got=%v", person.GetW3IDSecurityV1PublicKey())
+		http.Error(w, fmt.Sprintf("failed to send follow request"), http.StatusInternalServerError)
+		return
+	}
+	publicKeyID := person.GetW3IDSecurityV1PublicKey().Begin().Get().GetJSONLDId().Get().String()
+	for _, inbox := range inboxes {
+		log.Infof("Posting Activity to Inbox=%q", inbox.String())
+		if err := s.Client.PostToInbox(ctx, inbox, toDeliver, publicKeyID, privateKey); err != nil {
+			log.Errorf("failed to post to inbox=%q: got err=%v", inbox.String(), err)
+		}
+	}
+	if !isPublic {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if err := s.Datastore.AddActivityToPublicInbox(ctx, toDeliver, primitive.NewObjectID(), isReply); err != nil {
+		log.Errorf("failed to add activity to public inbox: got err=%v", err)
+	}
 }
 
 func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {

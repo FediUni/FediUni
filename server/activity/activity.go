@@ -8,6 +8,12 @@ import (
 	"github.com/go-fed/activity/streams/vocab"
 )
 
+type Activity interface {
+	vocab.Type
+	GetActivityStreamsTo() vocab.ActivityStreamsToProperty
+	GetActivityStreamsCc() vocab.ActivityStreamsCcProperty
+}
+
 func JSON(activity vocab.Type) ([]byte, error) {
 	m, err := streams.Serialize(activity)
 	if err != nil {
@@ -48,4 +54,19 @@ func ParseAnnounceActivity(ctx context.Context, activity vocab.Type) (vocab.Acti
 		return nil, err
 	}
 	return announce, nil
+}
+
+func ParseLikeActivity(ctx context.Context, activity vocab.Type) (vocab.ActivityStreamsLike, error) {
+	var like vocab.ActivityStreamsLike
+	likeResolver, err := streams.NewTypeResolver(func(ctx context.Context, l vocab.ActivityStreamsLike) error {
+		like = l
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := likeResolver.Resolve(ctx, activity); err != nil {
+		return nil, err
+	}
+	return like, err
 }

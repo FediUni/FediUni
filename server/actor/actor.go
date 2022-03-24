@@ -20,6 +20,7 @@ type Actor interface {
 	vocab.Type
 	GetActivityStreamsFollowers() vocab.ActivityStreamsFollowersProperty
 	GetActivityStreamsFollowing() vocab.ActivityStreamsFollowingProperty
+	GetActivityStreamsInbox() vocab.ActivityStreamsInboxProperty
 	GetActivityStreamsOutbox() vocab.ActivityStreamsOutboxProperty
 }
 
@@ -212,4 +213,19 @@ func ParsePerson(ctx context.Context, actor vocab.Type) (vocab.ActivityStreamsPe
 		return nil, err
 	}
 	return person, nil
+}
+
+func ParseActor(ctx context.Context, rawActor vocab.Type) (Actor, error) {
+	var actor Actor
+	actorResolver, err := streams.NewTypeResolver(func(ctx context.Context, a Actor) error {
+		actor = a
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := actorResolver.Resolve(ctx, rawActor); err != nil {
+		return nil, err
+	}
+	return actor, nil
 }
