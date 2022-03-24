@@ -289,7 +289,6 @@ func (d *Datastore) GetPublicInboxAsOrderedCollection(ctx context.Context, local
 	if institute {
 		filter["isInstitute"] = true
 	}
-	``
 	inboxCollection := streams.NewActivityStreamsOrderedCollection()
 	inboxURL, err := url.Parse(fmt.Sprintf("%s/inbox", d.server.String()))
 	if err != nil {
