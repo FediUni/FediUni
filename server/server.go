@@ -64,6 +64,7 @@ type Datastore interface {
 	AddActivityToPublicInbox(context.Context, vocab.Type, primitive.ObjectID, bool) error
 	GetPublicInbox(context.Context, string, string, bool, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetPublicInboxAsOrderedCollection(context.Context, bool, bool) (vocab.ActivityStreamsOrderedCollection, error)
+	GetLikedAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	DeleteObjectFromAllInboxes(context.Context, *url.URL) error
 	AddHostToSameInstitute(ctx context.Context, instance *url.URL) error
 	UpdateActor(context.Context, string, string, string, vocab.ActivityStreamsImage) error
@@ -152,6 +153,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/actor/outbox", s.getAnyActorOutbox)
 	activitypubRouter.Get("/actor/{username}/followers", s.getFollowers)
 	activitypubRouter.Get("/actor/{username}/following", s.getFollowing)
+	activitypubRouter.Get("/actor/{username}/liked", s.getLiked)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/inbox", s.getPublicInbox)
 
 	activitypubRouter.Post("/register", s.createUser)
@@ -392,6 +394,35 @@ func (s *Server) getFollowing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m, err := streams.Serialize(followers)
+	if err != nil {
+		log.Errorf("failed to serialize activity : got err=%v", err)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	marshalledActivity, err := json.Marshal(m)
+	if err != nil {
+		log.Errorf("failed to marshal activity to JSON: got err=%v", err)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledActivity)
+}
+
+func (s *Server) getLiked(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		http.Error(w, "username is unspecified", http.StatusBadRequest)
+		return
+	}
+	liked, err := s.Actor.GetLikedAsOrderedCollection(r.Context(), username)
+	if err != nil {
+		log.Errorf("failed to load followers from Datastore: got err=%v", err)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	m, err := streams.Serialize(liked)
 	if err != nil {
 		log.Errorf("failed to serialize activity : got err=%v", err)
 		http.Error(w, "Failed to load followers", http.StatusInternalServerError)

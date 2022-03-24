@@ -160,6 +160,46 @@ func (d *Datastore) GetFollowingByUsername(ctx context.Context, username string)
 	return following, nil
 }
 
+// GetLikedAsOrderedCollection returns an OrderedCollection of Like Activities.
+func (d *Datastore) GetLikedAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
+	actor, err := d.GetActorByUsername(ctx, username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load actor username=%q: got err=%v", username, err)
+	}
+	liked := d.client.Database("FediUni").Collection("liked")
+	filter := bson.D{{"_id", actor.GetJSONLDId().Get().String()}}
+	likedCollection := streams.NewActivityStreamsOrderedCollection()
+	likedURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/liked", d.server.String(), username))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse liked URL: got err=%v", err)
+	}
+	id := streams.NewJSONLDIdProperty()
+	id.Set(likedURL)
+	likedCollection.SetJSONLDId(id)
+	likedSize, err := liked.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine liked size: got err=%v", err)
+	}
+	totalItems := streams.NewActivityStreamsTotalItemsProperty()
+	totalItems.Set(int(likedSize))
+	likedCollection.SetActivityStreamsTotalItems(totalItems)
+	first := streams.NewActivityStreamsFirstProperty()
+	firstURL, err := url.Parse(fmt.Sprintf("%s?page=true", likedURL.String()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine first URL: got err=%v", err)
+	}
+	first.SetIRI(firstURL)
+	likedCollection.SetActivityStreamsFirst(first)
+	last := streams.NewActivityStreamsLastProperty()
+	lastURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=0", likedURL.String()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine last URL: got err=%v", err)
+	}
+	last.SetIRI(lastURL)
+	likedCollection.SetActivityStreamsLast(last)
+	return likedCollection, nil
+}
+
 // GetActorByActorID returns an instance of Person from Mongo using URI.
 func (d *Datastore) GetActorByActorID(ctx context.Context, actorID string) (actor.Person, error) {
 	actors := d.client.Database("FediUni").Collection("actors")

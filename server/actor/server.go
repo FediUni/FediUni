@@ -36,6 +36,7 @@ type Datastore interface {
 	GetPublicInboxAsOrderedCollection(context.Context, bool, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetLikedAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	UpdateActor(context.Context, string, string, string, vocab.ActivityStreamsImage) error
 }
 type Client interface {
@@ -131,6 +132,11 @@ func (s *Server) GetFollowers(ctx context.Context, username string) (vocab.Activ
 // GetFollowing returns an OrderedCollection where items are Actor IRIs.
 func (s *Server) GetFollowing(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
 	return s.Datastore.GetFollowingByUsername(ctx, username)
+}
+
+// GetLikedAsOrderedCollection returns an OrderedCollection of Like IRIs.
+func (s *Server) GetLikedAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
+	return s.Datastore.GetLikedAsOrderedCollection(ctx, username)
 }
 
 // GetInboxAsOrderedCollection returns an OrderedCollection with page IRIs.
