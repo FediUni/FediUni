@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	cacheTime = 10 * time.Minute
+	cacheTime = 30 * time.Minute
 	// Limit the number of simultaneous collection item dereferences.
-	limit = 10
+	limit = 20
 	// Must be set on GET and POST requests to inboxes, outboxes, etc.
 	// https://www.w3.org/TR/activitypub/#retrieving-objects
 	// https://www.w3.org/TR/activitypub/#server-to-server-interactions
