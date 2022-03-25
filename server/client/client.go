@@ -1084,7 +1084,7 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 						}
 						inbox := a.GetActivityStreamsInbox()
 						if inbox == nil {
-							log.Errorf("Failed to receive Outbox: got=%v", inbox)
+							log.Errorf("Failed to receive Inbox: got=%v", inbox)
 							continue
 						}
 						if inbox.IsIRI() {
@@ -1099,7 +1099,7 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 					}
 					inbox := a.GetActivityStreamsInbox()
 					if inbox == nil {
-						log.Errorf("Failed to receive an Actor Outbox: got=%v", inbox)
+						log.Errorf("Failed to receive an Actor Inbox: got=%v", inbox)
 						continue
 					}
 					if inbox.IsIRI() {
@@ -1154,9 +1154,9 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 							log.Errorf("Failed to parse Actor: got err=%v", err)
 							continue
 						}
-						inbox := a.GetActivityStreamsOutbox()
+						inbox := a.GetActivityStreamsInbox()
 						if inbox == nil {
-							log.Errorf("Failed to receive Outbox: got=%v", inbox)
+							log.Errorf("Failed to receive Inbox: got=%v", inbox)
 							continue
 						}
 						if inbox.IsIRI() {
@@ -1187,7 +1187,7 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 						}
 						inbox := a.GetActivityStreamsInbox()
 						if inbox == nil {
-							log.Errorf("Failed to receive Outbox: got=%v", inbox)
+							log.Errorf("Failed to receive Inbox: got=%v", inbox)
 							continue
 						}
 						if inbox.IsIRI() {
@@ -1202,7 +1202,7 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 					}
 					inbox := a.GetActivityStreamsInbox()
 					if inbox == nil {
-						log.Errorf("Failed to receive an Actor Outbox: got=%v", inbox)
+						log.Errorf("Failed to receive an Actor Inbox: got=%v", inbox)
 						continue
 					}
 					if inbox.IsIRI() {
