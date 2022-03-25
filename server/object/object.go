@@ -81,7 +81,7 @@ func WrapInCreate(ctx context.Context, object Object, actor vocab.Type) (vocab.A
 	if actor == nil {
 		return nil, fmt.Errorf("failed to receive actor: got=%v", actor)
 	}
-	var create vocab.ActivityStreamsCreate
+	create := streams.NewActivityStreamsCreate()
 	o := streams.NewActivityStreamsObjectProperty()
 	create.SetActivityStreamsObject(o)
 	if err := o.AppendType(object); err != nil {
