@@ -217,7 +217,19 @@ func ParsePerson(ctx context.Context, actor vocab.Type) (vocab.ActivityStreamsPe
 
 func ParseActor(ctx context.Context, rawActor vocab.Type) (Actor, error) {
 	var actor Actor
-	actorResolver, err := streams.NewTypeResolver(func(ctx context.Context, a Actor) error {
+	actorResolver, err := streams.NewTypeResolver(func(ctx context.Context, a vocab.ActivityStreamsPerson) error {
+		actor = a
+		return nil
+	}, func(ctx context.Context, a vocab.ActivityStreamsService) error {
+		actor = a
+		return nil
+	}, func(ctx context.Context, a vocab.ActivityStreamsGroup) error {
+		actor = a
+		return nil
+	}, func(ctx context.Context, a vocab.ActivityStreamsOrganization) error {
+		actor = a
+		return nil
+	}, func(ctx context.Context, a vocab.ActivityStreamsApplication) error {
 		actor = a
 		return nil
 	})
