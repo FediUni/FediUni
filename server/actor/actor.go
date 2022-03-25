@@ -216,6 +216,9 @@ func ParsePerson(ctx context.Context, actor vocab.Type) (vocab.ActivityStreamsPe
 }
 
 func ParseActor(ctx context.Context, rawActor vocab.Type) (Actor, error) {
+	if rawActor == nil {
+		return nil, fmt.Errorf("failed to receive actor: got=%v", rawActor)
+	}
 	var actor Actor
 	actorResolver, err := streams.NewTypeResolver(func(ctx context.Context, a vocab.ActivityStreamsPerson) error {
 		actor = a
