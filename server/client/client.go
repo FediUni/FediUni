@@ -1135,7 +1135,19 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 						continue
 					}
 					for iter := orderedItems.Begin(); iter != orderedItems.End(); iter = iter.Next() {
-						item := iter.GetType()
+						var item vocab.Type
+						switch {
+						case iter.IsIRI():
+							item, err = c.FetchRemoteObject(ctx, iter.GetIRI(), false, 0, 0)
+							if err != nil {
+								log.Errorf("Failed to fetch remote actor: got err=%v", err)
+							}
+						case iter.HasAny():
+							item = iter.GetType()
+						default:
+							log.Errorf("Item in OrderedItems is undefined: got=%v", iter)
+							continue
+						}
 						a, err := actor.ParseActor(ctx, item)
 						if err != nil {
 							log.Errorf("Failed to parse Actor: got err=%v", err)
