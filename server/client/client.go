@@ -954,6 +954,7 @@ func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.Activi
 				return fmt.Errorf("%s Failed to fetch object ID=%q", prefix, itemID.String())
 			}
 			if item == nil {
+				log.Errorf("Failed to receive a remote object: got=%v", item)
 				return nil
 			}
 			item, err = c.DereferenceItem(ctx, item, depth+1, maxDepth)
