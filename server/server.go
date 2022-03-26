@@ -1030,6 +1030,11 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to delete object"), http.StatusInternalServerError)
 			return
 		}
+	case "Like":
+		if err := s.like(ctx, activityRequest); err != nil {
+			log.Errorf("Failed to like specified object: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to like object"), http.StatusBadRequest)
+		}
 	default:
 		log.Errorf("Unsupported Type: got=%q", typeName)
 		http.Error(w, "failed to process activityRequest", http.StatusInternalServerError)
@@ -1458,6 +1463,12 @@ func (s *Server) delete(ctx context.Context, activityRequest vocab.Type) error {
 // See: https://www.w3.org/TR/activitypub/#update-activity-inbox
 func (s *Server) update(ctx context.Context, activityRequest vocab.Type) error {
 	return fmt.Errorf("support for updating activities and objects is unimplemented")
+}
+
+// Like can only like activities and objects owned by the server.
+// See: https://www.w3.org/TR/activitypub/#like-activity-inbox
+func (s *Server) like(ctx context.Context, activityRequest vocab.Type) error {
+	return fmt.Errorf("support for like activities is unimplemented")
 }
 
 func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) error {
