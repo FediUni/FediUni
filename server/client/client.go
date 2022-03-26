@@ -1023,9 +1023,10 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 	to := a.GetActivityStreamsTo()
 	if to != nil {
 		for iter := to.Begin(); iter != to.End(); iter = iter.Next() {
-			switch {
-			case iter.IsIRI():
-				o, err := c.FetchRemoteObject(ctx, iter.GetIRI(), true, 0, 1)
+			var o vocab.Type
+			var err error
+			if iter.IsIRI() {
+				o, err = c.FetchRemoteObject(ctx, iter.GetIRI(), true, 0, 1)
 				if err != nil {
 					log.Errorf("Failed to fetch remote Object: got err=%v", err)
 					continue
@@ -1034,88 +1035,90 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 					log.Errorf("Failed to fetch Object: got=%v", o)
 					continue
 				}
-				switch {
-				case o.GetTypeName() == "OrderedCollection":
-					orderedCollection, err := object.ParseOrderedCollection(ctx, o)
-					if err != nil {
-						log.Errorf("Failed to parse OrderedCollection: got err=%v", err)
-						continue
-					}
-					orderedItems := orderedCollection.GetActivityStreamsOrderedItems()
-					if orderedItems == nil {
-						log.Errorf("Failed to get OrderedItems: got err=%v", err)
-						continue
-					}
-					if err := c.DereferenceOrderedItems(ctx, orderedItems, 0, 2); err != nil {
-						log.Errorf("Failed to dereference OrderedItems: got err=%v", err)
-						continue
-					}
-					for iter := orderedItems.Begin(); iter != orderedItems.End(); iter = iter.Next() {
-						item := iter.GetType()
-						a, err := actor.ParseActor(ctx, item)
-						if err != nil {
-							log.Errorf("Failed to parse Actor: got err=%v", err)
-							continue
-						}
-						inbox := a.GetActivityStreamsInbox()
-						if inbox == nil {
-							log.Errorf("Failed to receive Outbox: got=%v", inbox)
-							continue
-						}
-						if inbox.IsIRI() {
-							inboxes = append(inboxes, inbox.GetIRI())
-						}
-					}
-				case o.GetTypeName() == "Collection":
-					collection, err := object.ParseCollection(ctx, o)
-					if err != nil {
-						log.Errorf("Failed to parse Collection: got err=%v", err)
-						continue
-					}
-					items := collection.GetActivityStreamsItems()
-					if items == nil {
-						log.Errorf("Failed to get Items: got err=%v", err)
-						continue
-					}
-					if err := c.DereferenceItems(ctx, items, 0, 2); err != nil {
-						log.Errorf("Failed to dereference Items: got err=%v", err)
-						continue
-					}
-					for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
-						item := iter.GetType()
-						a, err := actor.ParseActor(ctx, item)
-						if err != nil {
-							log.Errorf("Failed to parse Actor: got err=%v", err)
-							continue
-						}
-						inbox := a.GetActivityStreamsInbox()
-						if inbox == nil {
-							log.Errorf("Failed to receive Inbox: got=%v", inbox)
-							continue
-						}
-						if inbox.IsIRI() {
-							inboxes = append(inboxes, inbox.GetIRI())
-						}
-					}
-				case iter.HasAny():
-					o := iter.GetType()
-					if o == nil {
-						log.Errorf("Failed to receive any object: got=%v", o)
-						continue
-					}
-					a, err := actor.ParseActor(ctx, o)
+			} else {
+				o = iter.GetType()
+			}
+			switch {
+			case o.GetTypeName() == "OrderedCollection":
+				orderedCollection, err := object.ParseOrderedCollection(ctx, o)
+				if err != nil {
+					log.Errorf("Failed to parse OrderedCollection: got err=%v", err)
+					continue
+				}
+				orderedItems := orderedCollection.GetActivityStreamsOrderedItems()
+				if orderedItems == nil {
+					log.Errorf("Failed to get OrderedItems: got err=%v", err)
+					continue
+				}
+				if err := c.DereferenceOrderedItems(ctx, orderedItems, 0, 2); err != nil {
+					log.Errorf("Failed to dereference OrderedItems: got err=%v", err)
+					continue
+				}
+				for iter := orderedItems.Begin(); iter != orderedItems.End(); iter = iter.Next() {
+					item := iter.GetType()
+					a, err := actor.ParseActor(ctx, item)
 					if err != nil {
 						log.Errorf("Failed to parse Actor: got err=%v", err)
 						continue
 					}
 					inbox := a.GetActivityStreamsInbox()
 					if inbox == nil {
-						log.Errorf("Failed to receive an Actor Inbox: got=%v", inbox)
+						log.Errorf("Failed to receive Outbox: got=%v", inbox)
 						continue
 					}
 					if inbox.IsIRI() {
 						inboxes = append(inboxes, inbox.GetIRI())
 					}
+				}
+			case o.GetTypeName() == "Collection":
+				collection, err := object.ParseCollection(ctx, o)
+				if err != nil {
+					log.Errorf("Failed to parse Collection: got err=%v", err)
+					continue
+				}
+				items := collection.GetActivityStreamsItems()
+				if items == nil {
+					log.Errorf("Failed to get Items: got err=%v", err)
+					continue
+				}
+				if err := c.DereferenceItems(ctx, items, 0, 2); err != nil {
+					log.Errorf("Failed to dereference Items: got err=%v", err)
+					continue
+				}
+				for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+					item := iter.GetType()
+					a, err := actor.ParseActor(ctx, item)
+					if err != nil {
+						log.Errorf("Failed to parse Actor: got err=%v", err)
+						continue
+					}
+					inbox := a.GetActivityStreamsInbox()
+					if inbox == nil {
+						log.Errorf("Failed to receive Inbox: got=%v", inbox)
+						continue
+					}
+					if inbox.IsIRI() {
+						inboxes = append(inboxes, inbox.GetIRI())
+					}
+				}
+			case iter.HasAny():
+				o := iter.GetType()
+				if o == nil {
+					log.Errorf("Failed to receive any object: got=%v", o)
+					continue
+				}
+				a, err := actor.ParseActor(ctx, o)
+				if err != nil {
+					log.Errorf("Failed to parse Actor: got err=%v", err)
+					continue
+				}
+				inbox := a.GetActivityStreamsInbox()
+				if inbox == nil {
+					log.Errorf("Failed to receive an Actor Inbox: got=%v", inbox)
+					continue
+				}
+				if inbox.IsIRI() {
+					inboxes = append(inboxes, inbox.GetIRI())
 				}
 			}
 		}
