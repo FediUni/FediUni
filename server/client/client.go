@@ -1101,8 +1101,7 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 						inboxes = append(inboxes, inbox.GetIRI())
 					}
 				}
-			case iter.HasAny():
-				o := iter.GetType()
+			default:
 				if o == nil {
 					log.Errorf("Failed to receive any object: got=%v", o)
 					continue
