@@ -167,7 +167,7 @@ func (d *Datastore) GetLikedAsOrderedCollection(ctx context.Context, username st
 		return nil, fmt.Errorf("failed to load actor username=%q: got err=%v", username, err)
 	}
 	liked := d.client.Database("FediUni").Collection("liked")
-	filter := bson.D{{"_id", actor.GetJSONLDId().Get().String()}}
+	filter := bson.D{{"actor", actor.GetJSONLDId().Get().String()}}
 	likedCollection := streams.NewActivityStreamsOrderedCollection()
 	likedURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/liked", d.server.String(), username))
 	if err != nil {
@@ -183,20 +183,9 @@ func (d *Datastore) GetLikedAsOrderedCollection(ctx context.Context, username st
 	totalItems := streams.NewActivityStreamsTotalItemsProperty()
 	totalItems.Set(int(likedSize))
 	likedCollection.SetActivityStreamsTotalItems(totalItems)
-	first := streams.NewActivityStreamsFirstProperty()
-	firstURL, err := url.Parse(fmt.Sprintf("%s?page=true", likedURL.String()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine first URL: got err=%v", err)
 	}
-	first.SetIRI(firstURL)
-	likedCollection.SetActivityStreamsFirst(first)
-	last := streams.NewActivityStreamsLastProperty()
-	lastURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=0", likedURL.String()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to determine last URL: got err=%v", err)
-	}
-	last.SetIRI(lastURL)
-	likedCollection.SetActivityStreamsLast(last)
 	return likedCollection, nil
 }
 
