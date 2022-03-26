@@ -189,8 +189,8 @@ func (d *Datastore) GetLikedAsOrderedCollection(ctx context.Context, username st
 	return likedCollection, nil
 }
 
-// GetLikesAsOrderedCollection returns an OrderedCollection of Like Activities.
-func (d *Datastore) GetLikesAsOrderedCollection(ctx context.Context, activityID string) (vocab.ActivityStreamsOrderedCollection, error) {
+// GetLikesUsingObjectID returns an OrderedCollection of Like Activities.
+func (d *Datastore) GetLikesUsingObjectID(ctx context.Context, activityID string) (vocab.ActivityStreamsOrderedCollection, error) {
 	a, err := d.GetActivityByObjectID(ctx, activityID, d.server.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load Activity: got err=%v", err)
@@ -203,10 +203,18 @@ func (d *Datastore) GetLikesAsOrderedCollection(ctx context.Context, activityID 
 	if objectID == nil {
 		return nil, fmt.Errorf("failed to load an ID: got=%v", objectID)
 	}
+	return d.GetLikesAsOrderedCollection(ctx, objectID)
+}
+
+// GetLikesAsOrderedCollection returns all known likes of an ObjectID.
+func (d *Datastore) GetLikesAsOrderedCollection(ctx context.Context, activityID *url.URL) (vocab.ActivityStreamsOrderedCollection, error) {
+	if activityID == nil {
+		return nil, fmt.Errorf("failed to receive an Activity ID: got=%v", activityID.String())
+	}
 	liked := d.client.Database("FediUni").Collection("liked")
-	filter := bson.D{{"object", objectID.String()}}
+	filter := bson.D{{"object", activityID.String()}}
 	likedCollection := streams.NewActivityStreamsOrderedCollection()
-	likedURL, err := url.Parse(fmt.Sprintf("%s/likes", objectID.String()))
+	likedURL, err := url.Parse(fmt.Sprintf("%s/likes", activityID.String()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse liked URL: got err=%v", err)
 	}

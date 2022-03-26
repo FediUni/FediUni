@@ -66,7 +66,8 @@ type Datastore interface {
 	GetPublicInbox(context.Context, string, string, bool, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetPublicInboxAsOrderedCollection(context.Context, bool, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	GetLikedAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
-	GetLikesAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetLikesUsingObjectID(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetLikesAsOrderedCollection(context.Context, *url.URL) (vocab.ActivityStreamsOrderedCollection, error)
 	DeleteObjectFromAllInboxes(context.Context, *url.URL) error
 	AddHostToSameInstitute(ctx context.Context, instance *url.URL) error
 	UpdateActor(context.Context, string, string, string, vocab.ActivityStreamsImage) error
@@ -163,7 +164,8 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	activitypubRouter.Post("/login", s.login)
 
 	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
-	activitypubRouter.Get("/activity/{activityID}/likes", s.getLiked)
+	activitypubRouter.Get("/activity/{activityID}/likes", s.getActivityLikes)
+	activitypubRouter.Get("/activity/likes", s.getAnyLikes)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/activity", s.getAnyActivity)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow/status", s.checkFollowStatus)
@@ -444,12 +446,12 @@ func (s *Server) getLiked(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getActivityLikes(w http.ResponseWriter, r *http.Request) {
-	activityID := chi.URLParam(r, "activity")
+	activityID := chi.URLParam(r, "activityID")
 	if activityID == "" {
-		http.Error(w, "username is unspecified", http.StatusBadRequest)
+		http.Error(w, "Activity ID is unspecified", http.StatusBadRequest)
 		return
 	}
-	liked, err := s.Datastore.GetLikesAsOrderedCollection(r.Context(), activityID)
+	liked, err := s.Datastore.GetLikesUsingObjectID(r.Context(), activityID)
 	if err != nil {
 		log.Errorf("failed to load followers from Datastore: got err=%v", err)
 		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
@@ -814,6 +816,48 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serializedActivity, err := streams.Serialize(object)
+	if err != nil {
+		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
+		return
+	}
+	marshalledActivity, err := json.Marshal(serializedActivity)
+	if err != nil {
+		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledActivity)
+}
+
+// GetAnyActivity fetches the remote Activity and forces an update.
+func (s *Server) getAnyLikes(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, _, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
+		return
+	}
+	activity := r.URL.Query().Get("id")
+	if activity == "" {
+		http.Error(w, "Activity ID is unspecified", http.StatusBadRequest)
+		return
+	}
+	activityID, err := url.Parse(activity)
+	if err != nil {
+		http.Error(w, "Activity ID is not a URL", http.StatusBadRequest)
+		return
+	}
+	likes, err := s.Datastore.GetLikesAsOrderedCollection(ctx, activityID)
+	if err != nil {
+		log.Errorf("Failed to load Likes for Activity: got err=%v", err)
+		likes = streams.NewActivityStreamsOrderedCollection()
+		numberOfLikes := streams.NewActivityStreamsTotalItemsProperty()
+		numberOfLikes.Set(0)
+		likes.SetActivityStreamsTotalItems(numberOfLikes)
+	}
+	serializedActivity, err := streams.Serialize(likes)
 	if err != nil {
 		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
 		return
