@@ -913,7 +913,9 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 	}
 	inboxes, err := s.Client.DereferenceRecipientInboxes(ctx, toDeliver)
 	// Post to own inbox to allow user to view their own activities.
-	inboxes = append(inboxes, person.GetActivityStreamsInbox().GetIRI())
+	if rawObject.GetTypeName() == "Note" {
+		inboxes = append(inboxes, person.GetActivityStreamsInbox().GetIRI())
+	}
 	privateKey, err := s.readPrivateKey(username)
 	if err != nil {
 		log.Errorf("failed to read private key: got err=%v", err)
