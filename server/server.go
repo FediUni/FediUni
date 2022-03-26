@@ -856,23 +856,34 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
 			return
 		}
-		like.SetJSONLDId(idProperty)
-		actor := streams.NewActivityStreamsActorProperty()
-		actor.AppendActivityStreamsPerson(person)
-		like.SetActivityStreamsActor(actor)
-		likedObjectID := rawObject.GetJSONLDId()
+		objectProperty := like.GetActivityStreamsObject()
+		if objectProperty == nil {
+			log.Errorf("Failed to receive an Object: got=%v", objectProperty)
+			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
+			return
+		}
+		var likedObjectID *url.URL
+		for iter := objectProperty.Begin(); iter != objectProperty.End(); iter = iter.Next() {
+			if iter.IsIRI() {
+				likedObjectID = iter.GetIRI()
+			}
+		}
 		if likedObjectID == nil {
 			log.Errorf("Failed to receive Object ID in Like Activity: got=%v", likedObjectID)
 			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
 			return
 		}
+		like.SetJSONLDId(idProperty)
+		actor := streams.NewActivityStreamsActorProperty()
+		actor.AppendActivityStreamsPerson(person)
+		like.SetActivityStreamsActor(actor)
 		actorID := person.GetJSONLDId()
 		if actorID == nil {
 			log.Errorf("Failed to receive Actor ID in Like Activity: got=%v", actorID)
 			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
 			return
 		}
-		if err := s.Datastore.LikeObject(ctx, likedObjectID.Get(), actorID.Get(), id); err != nil {
+		if err := s.Datastore.LikeObject(ctx, likedObjectID, actorID.Get(), id); err != nil {
 			log.Errorf("Failed to insert Like: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
 			return
