@@ -69,6 +69,7 @@ type Datastore interface {
 	DeleteObjectFromAllInboxes(context.Context, *url.URL) error
 	AddHostToSameInstitute(ctx context.Context, instance *url.URL) error
 	UpdateActor(context.Context, string, string, string, vocab.ActivityStreamsImage) error
+	LikeObject(context.Context, *url.URL, *url.URL, *url.URL) error
 }
 
 type Server struct {
@@ -859,6 +860,23 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		actor := streams.NewActivityStreamsActorProperty()
 		actor.AppendActivityStreamsPerson(person)
 		like.SetActivityStreamsActor(actor)
+		likedObjectID := rawObject.GetJSONLDId()
+		if likedObjectID == nil {
+			log.Errorf("Failed to receive Object ID in Like Activity: got=%v", likedObjectID)
+			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
+			return
+		}
+		actorID := person.GetJSONLDId()
+		if actorID == nil {
+			log.Errorf("Failed to receive Actor ID in Like Activity: got=%v", actorID)
+			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
+			return
+		}
+		if err := s.Datastore.LikeObject(ctx, likedObjectID.Get(), actorID.Get(), id); err != nil {
+			log.Errorf("Failed to insert Like: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
+			return
+		}
 		toDeliver = like
 	case "Note":
 		note, err := object.ParseNote(ctx, rawObject)
@@ -1029,6 +1047,11 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 			log.Errorf("Failed to delete specified object: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to delete object"), http.StatusInternalServerError)
 			return
+		}
+	case "Like":
+		if err := s.like(ctx, activityRequest); err != nil {
+			log.Errorf("Failed to like specified object: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to like object"), http.StatusBadRequest)
 		}
 	default:
 		log.Errorf("Unsupported Type: got=%q", typeName)
@@ -1458,6 +1481,65 @@ func (s *Server) delete(ctx context.Context, activityRequest vocab.Type) error {
 // See: https://www.w3.org/TR/activitypub/#update-activity-inbox
 func (s *Server) update(ctx context.Context, activityRequest vocab.Type) error {
 	return fmt.Errorf("support for updating activities and objects is unimplemented")
+}
+
+// Like can only like activities and objects owned by the server.
+// See: https://www.w3.org/TR/activitypub/#like-activity-inbox
+func (s *Server) like(ctx context.Context, activityRequest vocab.Type) error {
+	like, err := activity.ParseLikeActivity(ctx, activityRequest)
+	if err != nil {
+		return err
+	}
+	id := activityRequest.GetJSONLDId()
+	if id == nil {
+		return fmt.Errorf("failed to receive an ID in Activity: got=%v", id)
+	}
+	activityID := id.Get()
+	actorProperty := like.GetActivityStreamsActor()
+	if actorProperty == nil {
+		return fmt.Errorf("failed to receive an Actor in Activity: got=%v", actorProperty)
+	}
+	var actorID *url.URL
+	for iter := actorProperty.Begin(); iter != actorProperty.End(); iter = iter.Next() {
+		switch {
+		case iter.IsIRI():
+			actorID = iter.GetIRI()
+		case iter.HasAny():
+			a := iter.GetType()
+			if a == nil {
+				return fmt.Errorf("failed to receive Actor: got=%v", a)
+			}
+			id := a.GetJSONLDId()
+			if id == nil {
+				return fmt.Errorf("failed to receive Actor ID: got=%v", id)
+			}
+			actorID = id.Get()
+		}
+	}
+	likedObject := like.GetActivityStreamsObject()
+	if likedObject == nil {
+		return fmt.Errorf("liked Object is unspecified: got=%v", likedObject)
+	}
+	var objectID *url.URL
+	for iter := likedObject.Begin(); iter != likedObject.End(); iter = iter.Next() {
+		switch {
+		case iter.IsIRI():
+			objectID = iter.GetIRI()
+		case iter.HasAny():
+			o := iter.GetType()
+			id := o.GetJSONLDId()
+			if id == nil {
+				return fmt.Errorf("liked Object ID is undefined: got=%v", id)
+			}
+			objectID = id.Get()
+		default:
+			return fmt.Errorf("failed to receive Object: got=%v", iter)
+		}
+	}
+	if err := s.Datastore.LikeObject(ctx, objectID, actorID, activityID); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) error {
