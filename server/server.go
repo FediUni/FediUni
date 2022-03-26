@@ -66,6 +66,7 @@ type Datastore interface {
 	GetPublicInbox(context.Context, string, string, bool, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetPublicInboxAsOrderedCollection(context.Context, bool, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	GetLikedAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetLikesAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	DeleteObjectFromAllInboxes(context.Context, *url.URL) error
 	AddHostToSameInstitute(ctx context.Context, instance *url.URL) error
 	UpdateActor(context.Context, string, string, string, vocab.ActivityStreamsImage) error
@@ -162,6 +163,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	activitypubRouter.Post("/login", s.login)
 
 	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
+	activitypubRouter.Get("/activity/{activityID}/likes", s.getLiked)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/activity", s.getAnyActivity)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow/status", s.checkFollowStatus)
@@ -441,6 +443,35 @@ func (s *Server) getLiked(w http.ResponseWriter, r *http.Request) {
 	w.Write(marshalledActivity)
 }
 
+func (s *Server) getActivityLikes(w http.ResponseWriter, r *http.Request) {
+	activityID := chi.URLParam(r, "activity")
+	if activityID == "" {
+		http.Error(w, "username is unspecified", http.StatusBadRequest)
+		return
+	}
+	liked, err := s.Datastore.GetLikesAsOrderedCollection(r.Context(), activityID)
+	if err != nil {
+		log.Errorf("failed to load followers from Datastore: got err=%v", err)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	m, err := streams.Serialize(liked)
+	if err != nil {
+		log.Errorf("failed to serialize activity : got err=%v", err)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	marshalledActivity, err := json.Marshal(m)
+	if err != nil {
+		log.Errorf("failed to marshal activity to JSON: got err=%v", err)
+		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledActivity)
+}
+
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	username := chi.URLParam(r, "username")
@@ -616,14 +647,14 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 	if !page {
 		outbox, err = s.Actor.GetOutbox(ctx, username)
 		if err != nil {
-			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", username, err)
+			log.Errorf("Failed to read from Outbox of Actor ID=%q: got err=%v", username, err)
 			http.Error(w, fmt.Sprintf("Failed to load Actor inbox"), http.StatusInternalServerError)
 			return
 		}
 	} else {
 		outbox, err = s.Actor.GetOutboxPage(ctx, username, minID, maxID)
 		if err != nil {
-			log.Errorf("Failed to read from Inbox of Actor ID=%q: got err=%v", username, err)
+			log.Errorf("Failed to read from Outbox of Actor ID=%q: got err=%v", username, err)
 			http.Error(w, fmt.Sprintf("Failed to load Actor inbox"), http.StatusInternalServerError)
 			return
 		}

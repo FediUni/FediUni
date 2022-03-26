@@ -189,6 +189,43 @@ func (d *Datastore) GetLikedAsOrderedCollection(ctx context.Context, username st
 	return likedCollection, nil
 }
 
+// GetLikesAsOrderedCollection returns an OrderedCollection of Like Activities.
+func (d *Datastore) GetLikesAsOrderedCollection(ctx context.Context, activityID string) (vocab.ActivityStreamsOrderedCollection, error) {
+	a, err := d.GetActivityByObjectID(ctx, activityID, d.server.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load Activity: got err=%v", err)
+	}
+	idProperty := a.GetJSONLDId()
+	if idProperty == nil {
+		return nil, fmt.Errorf("failed to load an ID: got=%v", idProperty)
+	}
+	objectID := idProperty.Get()
+	if objectID == nil {
+		return nil, fmt.Errorf("failed to load an ID: got=%v", objectID)
+	}
+	liked := d.client.Database("FediUni").Collection("liked")
+	filter := bson.D{{"object", objectID.String()}}
+	likedCollection := streams.NewActivityStreamsOrderedCollection()
+	likedURL, err := url.Parse(fmt.Sprintf("%s/likes", objectID.String()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse liked URL: got err=%v", err)
+	}
+	id := streams.NewJSONLDIdProperty()
+	id.Set(likedURL)
+	likedCollection.SetJSONLDId(id)
+	likedSize, err := liked.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine liked size: got err=%v", err)
+	}
+	totalItems := streams.NewActivityStreamsTotalItemsProperty()
+	totalItems.Set(int(likedSize))
+	likedCollection.SetActivityStreamsTotalItems(totalItems)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine first URL: got err=%v", err)
+	}
+	return likedCollection, nil
+}
+
 func (d *Datastore) LikeObject(ctx context.Context, objectID *url.URL, actorID *url.URL, activityID *url.URL) error {
 	if objectID == nil {
 		return fmt.Errorf("failed to receive an Object ID: got=%v", objectID)
@@ -670,7 +707,12 @@ func (d *Datastore) UpdateActivity(ctx context.Context, activity vocab.Type, inR
 
 func (d *Datastore) GetActorOutboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
 	outbox := d.client.Database("FediUni").Collection("outbox")
-	filter := bson.D{{"sender", username}}
+	filter := bson.M{
+		"$and": bson.A{
+			bson.D{{"sender", username}},
+			bson.D{{"type", bson.D{{"$in", bson.A{"Create", "Announce"}}}}},
+		},
+	}
 	outboxCollection := streams.NewActivityStreamsOrderedCollection()
 	outboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/outbox", d.server.String(), username))
 	if err != nil {
@@ -709,7 +751,12 @@ func (d *Datastore) GetActorOutboxAsOrderedCollection(ctx context.Context, usern
 func (d *Datastore) GetActorOutbox(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
 	log.Infof("Searching for Recipient with Username=%q", username)
 	outbox := d.client.Database("FediUni").Collection("outbox")
-	filter := bson.M{"sender": strings.ToLower(username)}
+	filter := bson.M{
+		"$and": bson.A{
+			bson.D{{"sender", username}},
+			bson.D{{"type", bson.D{{"$in", bson.A{"Create", "Announce"}}}}},
+		},
+	}
 	outboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/outbox", d.server.String(), username))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
@@ -845,7 +892,7 @@ func (d *Datastore) GetActorInboxAsOrderedCollection(ctx context.Context, userna
 // GetActorInbox paginates the inbox 20 activities at a time using IDs.
 // ObjectIDs exceeding that maxID are ignored, and ObjectIDs under the min ID
 // are ignored.
-func (d *Datastore) GetActorInbox(ctx context.Context, username string, minID string, maxID string, local bool) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+func (d *Datastore) GetActorInbox(ctx context.Context, username, minID, maxID string, local bool) (vocab.ActivityStreamsOrderedCollectionPage, error) {
 	log.Infof("Searching for Recipient with Username=%q", username)
 	inbox := d.client.Database("FediUni").Collection("inbox")
 	inboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/inbox", d.server.String(), username))
