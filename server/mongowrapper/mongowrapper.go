@@ -200,6 +200,29 @@ func (d *Datastore) GetLikedAsOrderedCollection(ctx context.Context, username st
 	return likedCollection, nil
 }
 
+func (d *Datastore) LikeObject(ctx context.Context, objectID *url.URL, actorID *url.URL, activityID *url.URL) error {
+	if objectID == nil {
+		return fmt.Errorf("failed to receive an Object ID: got=%v", objectID)
+	}
+	if actorID == nil {
+		return fmt.Errorf("failed to receive an Actor ID: got=%v", actorID)
+	}
+	if activityID == nil {
+		return fmt.Errorf("failed to receive an Activity ID: got=%v", activityID)
+	}
+	users := d.client.Database("FediUni").Collection("users")
+	res, err := users.InsertOne(ctx, bson.M{
+		"object":   objectID.String(),
+		"actor":    actorID.String(),
+		"activity": activityID.String(),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to insert activity: got err=%v", err)
+	}
+	log.Infof("Inserted Like Activity with ID=%q", res.InsertedID)
+	return nil
+}
+
 // GetActorByActorID returns an instance of Person from Mongo using URI.
 func (d *Datastore) GetActorByActorID(ctx context.Context, actorID string) (actor.Person, error) {
 	actors := d.client.Database("FediUni").Collection("actors")
