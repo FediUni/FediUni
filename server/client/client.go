@@ -135,7 +135,8 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve object to type: got err=%v", err)
 	}
-	switch typeName := o.GetTypeName(); typeName {
+	typeName := o.GetTypeName()
+	switch typeName {
 	case "Create":
 		create, err := activity.ParseCreateActivity(ctx, o)
 		if err != nil {
@@ -153,6 +154,7 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 			return nil, err
 		}
 	}
+	log.Infof("Returning Object of Type=%q", typeName)
 	return o, nil
 }
 
@@ -1028,8 +1030,12 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 					log.Errorf("Failed to fetch remote Object: got err=%v", err)
 					continue
 				}
-				switch o.GetTypeName() {
-				case "OrderedCollection":
+				if o == nil {
+					log.Errorf("Failed to fetch Object: got=%v", o)
+					continue
+				}
+				switch {
+				case o.GetTypeName() == "OrderedCollection":
 					orderedCollection, err := object.ParseOrderedCollection(ctx, o)
 					if err != nil {
 						log.Errorf("Failed to parse OrderedCollection: got err=%v", err)
@@ -1060,7 +1066,7 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 							inboxes = append(inboxes, inbox.GetIRI())
 						}
 					}
-				case "Collection":
+				case o.GetTypeName() == "Collection":
 					collection, err := object.ParseCollection(ctx, o)
 					if err != nil {
 						log.Errorf("Failed to parse Collection: got err=%v", err)
@@ -1091,8 +1097,13 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 							inboxes = append(inboxes, inbox.GetIRI())
 						}
 					}
-				default:
-					a, err := actor.ParseActor(ctx, iter.GetType())
+				case iter.HasAny():
+					o := iter.GetType()
+					if o == nil {
+						log.Errorf("Failed to receive any object: got=%v", o)
+						continue
+					}
+					a, err := actor.ParseActor(ctx, o)
 					if err != nil {
 						log.Errorf("Failed to parse Actor: got err=%v", err)
 						continue
