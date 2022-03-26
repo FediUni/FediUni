@@ -210,7 +210,7 @@ func (d *Datastore) LikeObject(ctx context.Context, objectID *url.URL, actorID *
 	if activityID == nil {
 		return fmt.Errorf("failed to receive an Activity ID: got=%v", activityID)
 	}
-	users := d.client.Database("FediUni").Collection("users")
+	users := d.client.Database("FediUni").Collection("liked")
 	res, err := users.InsertOne(ctx, bson.M{
 		"object":   objectID.String(),
 		"actor":    actorID.String(),
