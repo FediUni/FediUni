@@ -165,6 +165,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	activitypubRouter.Post("/login", s.login)
 
 	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
+	activitypubRouter.Get("/activity/{activityID}/object", s.getActivityObject)
 	activitypubRouter.Get("/activity/{activityID}/likes", s.getActivityLikes)
 	activitypubRouter.Get("/activity/likes", s.getAnyLikes)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/activity/likes/status", s.checkLikeStatus)
@@ -608,6 +609,36 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load activity", http.StatusNotFound)
 		return
 	}
+	serializedActivity, err := streams.Serialize(activity)
+	if err != nil {
+		log.Errorf("failed to serialize activity with ID=%q: got err=%v", activityID, err)
+		http.Error(w, "failed to load activity", http.StatusNotFound)
+		return
+	}
+	marshalledActivity, err := json.Marshal(serializedActivity)
+	if err != nil {
+		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
+		http.Error(w, "failed to load activity", http.StatusNotFound)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledActivity)
+}
+
+func (s *Server) getActivityObject(w http.ResponseWriter, r *http.Request) {
+	activityID := chi.URLParam(r, "activityID")
+	if activityID == "" {
+		http.Error(w, "activityID is unspecified", http.StatusBadRequest)
+	}
+	activity, err := s.Datastore.GetActivityByObjectID(r.Context(), activityID, s.URL.String())
+	if err != nil {
+		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
+		http.Error(w, "failed to load activity", http.StatusNotFound)
+		return
+	}
+
 	serializedActivity, err := streams.Serialize(activity)
 	if err != nil {
 		log.Errorf("failed to serialize activity with ID=%q: got err=%v", activityID, err)
@@ -1075,7 +1106,15 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		toDeliver = like
 	case "Note":
 		note, err := object.ParseNote(ctx, rawObject)
-		note.SetJSONLDId(idProperty)
+		noteID, err := url.Parse(fmt.Sprintf("%s/object", id.String()))
+		if err != nil {
+			log.Errorf("Failed to create Note ID: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Note"), http.StatusBadRequest)
+			return
+		}
+		noteIDProperty := streams.NewJSONLDIdProperty()
+		noteIDProperty.Set(noteID)
+		note.SetJSONLDId(noteIDProperty)
 		if err != nil {
 			log.Errorf("Failed to parse Note Object: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to send Note"), http.StatusBadRequest)
@@ -1209,7 +1248,7 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 		}
 	case "Announce":
 		if err := s.handleAnnounceRequest(ctx, activityRequest, username); err != nil {
-			log.Errorf("Failed to handle Create Activity: got err=%v", err)
+			log.Errorf("Failed to handle Announce Activity: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to process create activity"), http.StatusInternalServerError)
 			return
 		}
@@ -1494,6 +1533,19 @@ func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest voca
 			content := image.GetActivityStreamsName()
 			for c := content.Begin(); c != nil; c = c.Next() {
 				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
+			}
+		case iter.IsActivityStreamsCreate():
+			// Overwrite Create with the first Object.
+			create, err := activity.ParseCreateActivity(ctx, iter.GetActivityStreamsCreate())
+			if err != nil {
+				return err
+			}
+			o := create.GetActivityStreamsObject()
+			for i := o.Begin(); i != o.End(); {
+				if err := iter.SetType(i.GetType()); err != nil {
+					return err
+				}
+				break
 			}
 		default:
 			return fmt.Errorf("non-note activity presented")
