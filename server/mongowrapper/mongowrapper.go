@@ -236,7 +236,7 @@ func (d *Datastore) GetLikesAsOrderedCollection(ctx context.Context, activityID 
 
 func (d *Datastore) GetAnnounceStatus(ctx context.Context, actorID, objectID *url.URL) (bool, error) {
 	outbox := d.client.Database("FediUni").Collection("outbox")
-	filter := bson.M{"actor": actorID, "type": "Announce", "object": objectID.String()}
+	filter := bson.M{"actor.id": actorID, "type": "Announce", "object": objectID.String()}
 	res := outbox.FindOne(ctx, filter)
 	err := res.Err()
 	if err != nil && err != mongo.ErrNoDocuments {
