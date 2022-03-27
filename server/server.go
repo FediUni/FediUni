@@ -993,6 +993,46 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 	idProperty := streams.NewJSONLDIdProperty()
 	idProperty.Set(id)
 	switch typeName := rawObject.GetTypeName(); typeName {
+	case "Announce":
+		announce, err := activity.ParseAnnounceActivity(ctx, rawObject)
+		if err != nil {
+			log.Errorf("Failed to parse Announce activity: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Announce"), http.StatusBadRequest)
+			return
+		}
+		objectProperty := announce.GetActivityStreamsObject()
+		if objectProperty == nil {
+			log.Errorf("Failed to receive an Object: got=%v", objectProperty)
+			http.Error(w, fmt.Sprintf("Failed to send Announce"), http.StatusBadRequest)
+			return
+		}
+		var announcedObjectID *url.URL
+		for iter := objectProperty.Begin(); iter != objectProperty.End(); iter = iter.Next() {
+			if iter.IsIRI() {
+				announcedObjectID = iter.GetIRI()
+			}
+		}
+		if announcedObjectID == nil {
+			log.Errorf("Failed to receive Object ID in Announce Activity: got=%v", announcedObjectID)
+			http.Error(w, fmt.Sprintf("Failed to send Announce"), http.StatusBadRequest)
+			return
+		}
+		announce.SetJSONLDId(idProperty)
+		actor := streams.NewActivityStreamsActorProperty()
+		actor.AppendActivityStreamsPerson(person)
+		announce.SetActivityStreamsActor(actor)
+		actorID := person.GetJSONLDId()
+		if actorID == nil {
+			log.Errorf("Failed to receive Actor ID in Like Activity: got=%v", actorID)
+			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
+			return
+		}
+		if err := s.Datastore.LikeObject(ctx, announcedObjectID, actorID.Get(), id); err != nil {
+			log.Errorf("Failed to insert Like: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
+			return
+		}
+		toDeliver = announce
 	case "Like":
 		like, err := activity.ParseLikeActivity(ctx, rawObject)
 		if err != nil {
