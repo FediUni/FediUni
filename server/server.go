@@ -72,6 +72,7 @@ type Datastore interface {
 	AddHostToSameInstitute(ctx context.Context, instance *url.URL) error
 	UpdateActor(context.Context, string, string, string, vocab.ActivityStreamsImage) error
 	LikeObject(context.Context, *url.URL, *url.URL, *url.URL) error
+	GetLikeStatus(context.Context, *url.URL, *url.URL) (bool, error)
 }
 
 type Server struct {
@@ -120,7 +121,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	s.Router.Use(middleware.RealIP)
 	s.Router.Use(middleware.Logger)
 	s.Router.Use(middleware.Timeout(60 * time.Second))
-	s.Router.Use(httprate.LimitAll(100, time.Minute*1))
+	s.Router.Use(httprate.LimitByIP(300, time.Minute*1))
 	s.Router.Use(cors.Handler(cors.Options{
 		AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -166,6 +167,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	activitypubRouter.Get("/activity/{activityID}", s.getActivity)
 	activitypubRouter.Get("/activity/{activityID}/likes", s.getActivityLikes)
 	activitypubRouter.Get("/activity/likes", s.getAnyLikes)
+	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/activity/likes/status", s.checkLikeStatus)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Get("/activity", s.getAnyActivity)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow", s.sendFollowRequest)
 	activitypubRouter.With(jwtauth.Verifier(tokenAuth)).Post("/follow/status", s.checkFollowStatus)
@@ -870,6 +872,73 @@ func (s *Server) getAnyLikes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledActivity)
+}
+
+// CheckLikeStatus determines if the specified Actor liked the provided Object.
+func (s *Server) checkLikeStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		log.Errorf("Failed to read from JWT: got err=%v", err)
+		http.Error(w, "Invalid JWT presented", http.StatusUnauthorized)
+		return
+	}
+	userID, err := parseJWTActorID(claims)
+	if err != nil {
+		log.Errorf("Failed to read from Actor ID from JWT: got err=%v", err)
+		http.Error(w, "Invalid JWT presented", http.StatusUnauthorized)
+		return
+	}
+	actorID, err := url.Parse(userID)
+	if err != nil {
+		log.Errorf("Failed to read from Actor ID from JWT: got err=%v", err)
+		http.Error(w, "Invalid JWT presented", http.StatusUnauthorized)
+		return
+	}
+	raw, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Errorf("Failed to read request body: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to read body"), http.StatusBadRequest)
+		return
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		log.Errorf("Failed to unmarshal like status: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to determine Like status"), http.StatusBadRequest)
+		return
+	}
+	rawObjectID := m["objectID"]
+	var objectID *url.URL
+	switch rawObjectID.(type) {
+	case string:
+		id := rawObjectID.(string)
+		objectID, err = url.Parse(id)
+		if err != nil {
+			log.Errorf("Failed to parse Object ID for Like status: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to determine Like status"), http.StatusBadRequest)
+			return
+		}
+	default:
+		log.Errorf("Invalid Object ID presented: got %v", rawObjectID)
+		http.Error(w, fmt.Sprintf("Failed to determine Like status"), http.StatusBadRequest)
+		return
+	}
+	liked, err := s.Actor.GetLikeStatus(ctx, actorID, objectID)
+	if err != nil {
+		log.Errorf("Failed to determine Like status: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to determine Like status"), http.StatusBadRequest)
+		return
+	}
+	m = map[string]interface{}{}
+	m["likeStatus"] = liked
+	res, err := json.Marshal(m)
+	if err != nil {
+		log.Errorf("Failed to marshal response as JSON: got err=%v", err)
+		http.Error(w, fmt.Sprintf("Failed to determine Like status"), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/activity+json")
+	w.Write(res)
 }
 
 func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {

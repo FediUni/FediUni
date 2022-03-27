@@ -234,6 +234,20 @@ func (d *Datastore) GetLikesAsOrderedCollection(ctx context.Context, activityID 
 	return likedCollection, nil
 }
 
+func (d *Datastore) GetLikeStatus(ctx context.Context, actorID, objectID *url.URL) (bool, error) {
+	liked := d.client.Database("FediUni").Collection("liked")
+	filter := bson.M{"actor": actorID, "object": objectID}
+	res := liked.FindOne(ctx, filter)
+	err := res.Err()
+	if err != nil && err != mongo.ErrNoDocuments {
+		return false, fmt.Errorf("failed to retrieve like status from Mongo: got err=%v", err)
+	}
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return false, nil
+	}
+	return true, nil
+}
+
 func (d *Datastore) LikeObject(ctx context.Context, objectID *url.URL, actorID *url.URL, activityID *url.URL) error {
 	if objectID == nil {
 		return fmt.Errorf("failed to receive an Object ID: got=%v", objectID)
