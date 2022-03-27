@@ -1522,6 +1522,14 @@ func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest voca
 	}
 	for iter := announce.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		switch {
+		case iter.IsIRI():
+			o, err := s.Client.FetchRemoteObject(ctx, iter.GetIRI(), false, 0, 2)
+			if err != nil {
+				return err
+			}
+			if err := iter.SetType(o); err != nil {
+				return err
+			}
 		case iter.IsActivityStreamsNote():
 			note := iter.GetActivityStreamsNote()
 			content := note.GetActivityStreamsContent()
