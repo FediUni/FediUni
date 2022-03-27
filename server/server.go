@@ -1556,7 +1556,7 @@ func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest voca
 				break
 			}
 		default:
-			return fmt.Errorf("non-note activity presented")
+			return fmt.Errorf("non-note activity presented: got=%v", iter.GetType())
 		}
 	}
 	return s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username, nil)

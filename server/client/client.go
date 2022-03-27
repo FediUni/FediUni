@@ -525,6 +525,15 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", objectID.String(), err)
 			}
 			iter.SetActivityStreamsNote(note)
+		case "Create":
+			create, err := activity.ParseCreateActivity(ctx, objectRetrieved)
+			if err != nil {
+				return fmt.Errorf("failed to parse Activity ID=%q as Create: got err=%v", objectID.String(), err)
+			}
+			if err := c.Create(ctx, create, depth+1, maxDepth); err != nil {
+				return fmt.Errorf("failed to dereference Create ID=%q: got err=%v", objectID.String(), err)
+			}
+			iter.SetActivityStreamsCreate(create)
 		}
 	}
 	return nil
