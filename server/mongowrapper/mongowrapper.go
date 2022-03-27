@@ -234,6 +234,20 @@ func (d *Datastore) GetLikesAsOrderedCollection(ctx context.Context, activityID 
 	return likedCollection, nil
 }
 
+func (d *Datastore) GetAnnounceStatus(ctx context.Context, actorID, objectID *url.URL) (bool, error) {
+	outbox := d.client.Database("FediUni").Collection("outbox")
+	filter := bson.M{"actor": actorID, "type": "Announce", "object": objectID.String()}
+	res := outbox.FindOne(ctx, filter)
+	err := res.Err()
+	if err != nil && err != mongo.ErrNoDocuments {
+		return false, fmt.Errorf("failed to retrieve Announce status from Mongo: got err=%v", err)
+	}
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return false, nil
+	}
+	return true, nil
+}
+
 func (d *Datastore) GetLikeStatus(ctx context.Context, actorID, objectID *url.URL) (bool, error) {
 	liked := d.client.Database("FediUni").Collection("liked")
 	filter := bson.M{"actor": actorID, "object": objectID}
