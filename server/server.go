@@ -1058,11 +1058,6 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
 			return
 		}
-		if err := s.Datastore.LikeObject(ctx, announcedObjectID, actorID.Get(), id); err != nil {
-			log.Errorf("Failed to insert Like: got err=%v", err)
-			http.Error(w, fmt.Sprintf("Failed to send Like"), http.StatusBadRequest)
-			return
-		}
 		toDeliver = announce
 	case "Like":
 		like, err := activity.ParseLikeActivity(ctx, rawObject)
