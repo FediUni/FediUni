@@ -5,7 +5,6 @@ import (
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"net/url"
 	"testing"
 )
@@ -85,7 +84,7 @@ func TestParseActor(t *testing.T) {
 					t.Fatalf("Failed to Serialize Want Actor: got err=%v", err)
 				}
 			}
-			if d := cmp.Diff(wantActor, gotActor, cmpopts.IgnoreUnexported()); d != "" {
+			if d := cmp.Diff(wantActor, gotActor); d != "" {
 				t.Errorf("ParseActor() returned an unexpected diff: (+got -want) %s", d)
 			}
 		})
