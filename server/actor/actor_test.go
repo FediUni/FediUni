@@ -1,6 +1,14 @@
 package actor
 
-import "testing"
+import (
+	"context"
+	"github.com/go-fed/activity/streams"
+	"github.com/go-fed/activity/streams/vocab"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"net/url"
+	"testing"
+)
 
 func TestIsIdentifier(t *testing.T) {
 	tests := []struct {
@@ -32,4 +40,72 @@ func TestIsIdentifier(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseActor(t *testing.T) {
+	tests := []struct {
+		name    string
+		actor   vocab.Type
+		want    Actor
+		wantErr bool
+	}{
+		{
+			name:  "Test Parsing Typical Person",
+			actor: generateTestPerson(),
+			want:  generateTestPerson(),
+		},
+		{
+			name:  "Test Parsing Typical Service",
+			actor: generateTestService(),
+			want:  generateTestService(),
+		},
+		{
+			name:    "Test Parsing nil Actor",
+			actor:   nil,
+			want:    nil,
+			wantErr: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			a, err := ParseActor(context.Background(), test.actor)
+			if err != nil && !test.wantErr {
+				t.Fatalf("Failed to Parse Actor: got err=%v", err)
+			}
+			var gotActor, wantActor map[string]interface{}
+			if a != nil {
+				gotActor, err = streams.Serialize(a)
+				if err != nil && !test.wantErr {
+					t.Fatalf("Failed to Serialize Actor: got err=%v", err)
+				}
+			}
+			if test.want != nil {
+				wantActor, err = streams.Serialize(test.want)
+				if err != nil && !test.wantErr {
+					t.Fatalf("Failed to Serialize Want Actor: got err=%v", err)
+				}
+			}
+			if d := cmp.Diff(wantActor, gotActor, cmpopts.IgnoreUnexported()); d != "" {
+				t.Errorf("ParseActor() returned an unexpected diff: (+got -want) %s", d)
+			}
+		})
+	}
+}
+
+func generateTestPerson() vocab.ActivityStreamsPerson {
+	p := streams.NewActivityStreamsPerson()
+	id, _ := url.Parse("http://testserver.com/actor/brandonstark")
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	p.SetJSONLDId(idProperty)
+	return p
+}
+
+func generateTestService() vocab.ActivityStreamsService {
+	s := streams.NewActivityStreamsService()
+	id, _ := url.Parse("http://testserver.com/actor/testbot")
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	s.SetJSONLDId(idProperty)
+	return s
 }

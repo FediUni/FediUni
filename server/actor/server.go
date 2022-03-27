@@ -80,6 +80,10 @@ func (s *Server) GetLocalPerson(ctx context.Context, username string, statistics
 	return person, nil
 }
 
+// GetAny returns any ActivityPub actor based on the provided identifier.
+// Uses Webfinger to determine the actor ID based on the identifier provided.
+// If the statistics parameter is true then the number of Followers, Actors
+// Followed, and the amount of Activities in the Outbox is returned.
 func (s *Server) GetAny(ctx context.Context, identifier string, statistics bool) (Actor, error) {
 	actor, err := s.Client.FetchRemoteActor(ctx, identifier)
 	if err != nil {

@@ -200,21 +200,9 @@ func IsIdentifier(identifier string) (bool, error) {
 	return false, nil
 }
 
-func ParsePerson(ctx context.Context, actor vocab.Type) (vocab.ActivityStreamsPerson, error) {
-	var person vocab.ActivityStreamsPerson
-	createResolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
-		person = p
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := createResolver.Resolve(ctx, actor); err != nil {
-		return nil, err
-	}
-	return person, nil
-}
-
+// ParseActor parses an Actor from the ActivityPub Object provided.
+// Returns an Actor if it is a Person, Service, Group, Organization or
+// Application.
 func ParseActor(ctx context.Context, rawActor vocab.Type) (Actor, error) {
 	if rawActor == nil {
 		return nil, fmt.Errorf("failed to receive actor: got=%v", rawActor)
