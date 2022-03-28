@@ -14,6 +14,14 @@ type testDatastore struct {
 	Actors map[string]vocab.ActivityStreamsPerson
 }
 
+func newTestDatastore() *testDatastore {
+	return &testDatastore{
+		Actors: map[string]vocab.ActivityStreamsPerson{
+			"brandonstark": generateTestPerson(),
+		},
+	}
+}
+
 func (d testDatastore) GetActorByUsername(_ context.Context, username string) (vocab.ActivityStreamsPerson, error) {
 	actor := d.Actors[username]
 	if actor == nil {
@@ -66,20 +74,48 @@ func (d testDatastore) UpdateActor(ctx context.Context, s string, s2 string, s3 
 	return fmt.Errorf("unimplemented")
 }
 
-func newTestDatastore() *testDatastore {
-	return &testDatastore{
+type testClient struct {
+	Actors map[string]vocab.ActivityStreamsPerson
+}
+
+func newTestClient() *testClient {
+	return &testClient{
 		Actors: map[string]vocab.ActivityStreamsPerson{
-			"brandonstark": generateTestPerson(),
+			"@brandonstark@testserver.com": generateTestPerson(),
 		},
 	}
 }
 
-type testClient struct {
-	Client
+func (c testClient) FetchRemoteActor(ctx context.Context, identifier string) (Actor, error) {
+	actor := c.Actors[identifier]
+	if actor == nil {
+		return nil, fmt.Errorf("failed to load Actor: got=%v", actor)
+	}
+	return actor, nil
 }
 
-func newTestClient() *testClient {
-	return &testClient{}
+func (c testClient) FetchRemoteObject(ctx context.Context, u *url.URL, b bool, i int, i2 int) (vocab.Type, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+func (c testClient) DereferenceFollowers(ctx context.Context, property vocab.ActivityStreamsFollowersProperty, i int, i2 int) error {
+	return fmt.Errorf("unimplemented")
+}
+
+func (c testClient) DereferenceFollowing(ctx context.Context, property vocab.ActivityStreamsFollowingProperty, i int, i2 int) error {
+	return fmt.Errorf("unimplemented")
+}
+
+func (c testClient) DereferenceOutbox(ctx context.Context, property vocab.ActivityStreamsOutboxProperty, i int, i2 int) error {
+	return fmt.Errorf("unimplemented")
+}
+
+func (c testClient) DereferenceObjectsInOrderedCollection(ctx context.Context, collection vocab.ActivityStreamsOrderedCollection, i int, i2 int, i3 int) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+func (c testClient) DereferenceOrderedItems(ctx context.Context, property vocab.ActivityStreamsOrderedItemsProperty, i int, i2 int) error {
+	return fmt.Errorf("unimplemented")
 }
 
 func TestGetLocalPerson(t *testing.T) {
@@ -123,7 +159,60 @@ func TestGetLocalPerson(t *testing.T) {
 				}
 			}
 			if d := cmp.Diff(wantPerson, gotPerson); d != "" {
-				t.Errorf("ParseActor() returned an unexpected diff: (+got -want) %s", d)
+				t.Errorf("GetLocalPerson() returned an unexpected diff: (+got -want) %s", d)
+			}
+		})
+	}
+}
+
+func TestGetAnyPerson(t *testing.T) {
+	tests := []struct {
+		name       string
+		identifier string
+		wantErr    bool
+		wantPerson vocab.ActivityStreamsPerson
+	}{
+		{
+			name:       "Test get person that exists",
+			identifier: "@brandonstark@testserver.com",
+			wantPerson: generateTestPerson(),
+			wantErr:    false,
+		},
+		{
+			name:       "Test get person with incorrect domain",
+			identifier: "@brandonstark@fakeserver.com",
+			wantPerson: nil,
+			wantErr:    true,
+		},
+		{
+			name:       "Test non-existent actor",
+			identifier: "@fakeactor@testserver.com",
+			wantPerson: nil,
+			wantErr:    true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := NewServer(nil, newTestDatastore(), newTestClient(), nil)
+			person, err := server.GetAny(context.Background(), test.identifier, false)
+			if err != nil && !test.wantErr {
+				t.Fatalf("GetAny() returned an unexpected error: got err=%v", err)
+			}
+			var gotPerson, wantPerson map[string]interface{}
+			if person != nil {
+				gotPerson, err = streams.Serialize(person)
+				if err != nil && !test.wantErr {
+					t.Fatalf("Failed to Serialize Got Person: got err=%v", err)
+				}
+			}
+			if test.wantPerson != nil {
+				wantPerson, err = streams.Serialize(test.wantPerson)
+				if err != nil && !test.wantErr {
+					t.Fatalf("Failed to Serialize Want Person: got err=%v", err)
+				}
+			}
+			if d := cmp.Diff(wantPerson, gotPerson); d != "" {
+				t.Errorf("GetAny() returned an unexpected diff: (+got -want) %s", d)
 			}
 		})
 	}
