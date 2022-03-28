@@ -5,12 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/go-fed/activity/streams"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/spf13/viper"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/jwtauth"
@@ -30,17 +33,14 @@ type TestDatastore struct {
 	privateKeys map[string]string
 }
 
-func NewTestDatastore(url *url.URL) *TestDatastore {
-	keyGenerator := actor.NewRSAKeyGenerator()
-	personGenerator := actor.NewPersonGenerator(url, keyGenerator)
-	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
+func NewTestDatastore(url *url.URL, a actor.Person, privateKey *bytes.Buffer) *TestDatastore {
 	return &TestDatastore{
 		knownUsers: map[string]*user.User{},
 		knownActors: map[string]actor.Person{
-			"brandonstark": person,
+			"brandonstark": a,
 		},
 		privateKeys: map[string]string{
-			"brandonstark": keyGenerator.PrivateKey.String(),
+			"brandonstark": privateKey.String(),
 		},
 	}
 }
@@ -148,22 +148,73 @@ func TestGetActor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to parse URL: got err=%v", err)
 	}
-	viper.Set("IMAGES_ROOT", "/tmp")
-	s, err := New(url, NewTestDatastore(url), nil, "")
-	if err != nil {
-		t.Fatalf("Failed to create server: got err=%v", err)
+	keyGenerator := actor.NewRSAKeyGenerator()
+	personGenerator := actor.NewPersonGenerator(url, keyGenerator)
+	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
+
+	tests := []struct {
+		name       string
+		path       string
+		wantRes    actor.Actor
+		wantStatus int
+		wantErr    bool
+	}{
+		{
+			name:       "Test get non-existent Actor",
+			path:       "/api/actor/bendean",
+			wantRes:    nil,
+			wantStatus: http.StatusNotFound,
+			wantErr:    false,
+		},
+		{
+			name:       "Test get existing Actor",
+			path:       "/api/actor/brandonstark",
+			wantRes:    person,
+			wantStatus: http.StatusOK,
+			wantErr:    false,
+		},
 	}
-	server := httptest.NewServer(s.Router)
-	defer server.Close()
-	resp, err := http.Get(fmt.Sprintf("%s/actor/bendean", server.URL))
-	if err != nil {
-		t.Errorf("getActor(): returned an unexpected err: got %v want %v", err, nil)
-	}
-	defer resp.Body.Close()
-	gotStatus := resp.StatusCode
-	wantStatus := http.StatusNotFound
-	if gotStatus != wantStatus {
-		t.Errorf("getActor(): returned an unexpected status: got %v want %v", gotStatus, wantStatus)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			viper.Set("IMAGES_ROOT", "/tmp")
+			s, err := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), nil, "")
+			if err != nil {
+				t.Fatalf("Failed to create server: got err=%v", err)
+			}
+			server := httptest.NewServer(s.Router)
+			defer server.Close()
+			res, err := http.Get(fmt.Sprintf("%s%s", server.URL, test.path))
+			if err != nil {
+				t.Errorf("getActor() returned an unexpected err: got %v want %v", err, nil)
+			}
+			defer res.Body.Close()
+			body, err := ioutil.ReadAll(res.Body)
+			if err != nil {
+				t.Errorf("getActor() failed to read from body: got err=%v", err)
+			}
+			gotStatus := res.StatusCode
+			var gotActor map[string]interface{}
+			if gotStatus == http.StatusOK {
+				if err := json.Unmarshal(body, &gotActor); err != nil {
+					t.Errorf("getActor() returned an unexpected result: failed to unmarshal JSON, got err=%v", err)
+				}
+			}
+			var wantActor map[string]interface{}
+			if test.wantRes != nil {
+				wantActor, err = streams.Serialize(test.wantRes)
+				if err != nil {
+					t.Errorf("getActor() failed to serialize Want Actor: got err=%v", err)
+				}
+			}
+			if gotStatus != test.wantStatus {
+				t.Errorf("getActor() returned an unexpected status: got %v want %v", gotStatus, test.wantStatus)
+			}
+			if d := cmp.Diff(wantActor, gotActor, cmpopts.SortSlices(func(s1, s2 string) bool {
+				return strings.Compare(s1, s2) < 0
+			})); d != "" {
+				t.Errorf("getActor() returned an unexpected diff: (+got -want) %s", d)
+			}
+		})
 	}
 }
 
@@ -222,6 +273,14 @@ func TestCreateUser(t *testing.T) {
 }
 
 func TestWebfingerKnownAccount(t *testing.T) {
+	url, err := url.Parse("https://testfediuni.xyz")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: got err=%v", err)
+	}
+	keyGenerator := actor.NewRSAKeyGenerator()
+	personGenerator := actor.NewPersonGenerator(url, keyGenerator)
+	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
+
 	tests := []struct {
 		name         string
 		resource     string
@@ -242,13 +301,12 @@ func TestWebfingerKnownAccount(t *testing.T) {
 			},
 		},
 	}
-	url, err := url.Parse("https://testfediuni.xyz")
 	if err != nil {
 		t.Fatalf("Failed to parse URL: got err=%v", err)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New(url, NewTestDatastore(url), nil, "")
+			s, _ := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), nil, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -259,7 +317,7 @@ func TestWebfingerKnownAccount(t *testing.T) {
 			defer resp.Body.Close()
 			body, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
-				t.Errorf("%s: Failed to read response returned: got err=%v", webfingerURL, err)
+				t.Fatalf("%s: Failed to read response returned: got err=%v", webfingerURL, err)
 			}
 			var gotResponse *client.WebfingerResponse
 			if err := json.Unmarshal(body, &gotResponse); err != nil {
@@ -300,7 +358,7 @@ func TestWebfinger(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New(url, NewTestDatastore(url), nil, "")
+			s, _ := New(url, NewTestDatastore(url, nil, nil), nil, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -336,7 +394,7 @@ func TestLogin(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			datastore := NewTestDatastore(url)
+			datastore := NewTestDatastore(url, nil, nil)
 			secret := "thisisatestsecret"
 			s, _ := New(url, datastore, nil, secret)
 			server := httptest.NewServer(s.Router)
