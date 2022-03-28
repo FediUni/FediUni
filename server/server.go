@@ -92,13 +92,13 @@ var (
 	tokenAuth *jwtauth.JWTAuth
 )
 
-func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenerator, secret string) (*Server, error) {
+func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenerator, secret, redisAddress string) (*Server, error) {
 	tokenAuth = jwtauth.New("HS256", []byte(secret), nil)
 	fileHandler, err := file.NewHandler(viper.GetString("IMAGES_ROOT"))
 	if err != nil {
 		return nil, err
 	}
-	client := client.NewClient(instanceURL, "redis:6379", viper.GetString("REDIS_PASSWORD"))
+	client := client.NewClient(instanceURL, redisAddress, viper.GetString("REDIS_PASSWORD"))
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 		KeyGenerator: keyGenerator,
 		Client:       client,
 		Redis: redis.NewClient(&redis.Options{
-			Addr:     "redis:6379",
+			Addr:     redisAddress,
 			Password: viper.GetString("REDIS_PASSWORD"),
 		}),
 		Policy: bluemonday.UGCPolicy(),

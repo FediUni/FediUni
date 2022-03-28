@@ -5,9 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-fed/activity/streams"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/spf13/viper"
+	"github.com/alicebob/miniredis/v2"
+
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -16,14 +15,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/jwtauth"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-
 	"github.com/FediUni/FediUni/server/actor"
 	"github.com/FediUni/FediUni/server/client"
 	"github.com/FediUni/FediUni/server/user"
+	"github.com/go-chi/jwtauth"
+	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/spf13/viper"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type TestDatastore struct {
@@ -140,7 +141,7 @@ func (g *TestKeyGenerator) WritePrivateKey(string) error {
 }
 
 func (g *TestKeyGenerator) GetPrivateKeyPEM() ([]byte, error) {
-	return nil, fmt.Errorf("GetPrivateKeyPEM() is unimplemented")
+	return []byte("testprivatekey"), nil
 }
 
 func TestGetActor(t *testing.T) {
@@ -177,7 +178,7 @@ func TestGetActor(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			viper.Set("IMAGES_ROOT", "/tmp")
-			s, err := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), nil, "")
+			s, err := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), nil, "", "")
 			if err != nil {
 				t.Fatalf("Failed to create server: got err=%v", err)
 			}
@@ -248,20 +249,38 @@ func TestCreateUser(t *testing.T) {
 			},
 			wantStatus: http.StatusBadRequest,
 		},
+		{
+			name: "Test create bendean",
+			params: url.Values{
+				"username": []string{"bendean"},
+				"password": []string{"fakepassword"},
+			},
+			wantStatus: http.StatusOK,
+		},
 	}
 	url, err := url.Parse("https://testserver.com")
 	if err != nil {
 		t.Fatalf("Failed to parse URL: got err=%v", err)
 	}
 	for _, test := range tests {
+		redis := miniredis.RunT(t)
+		buffer := &bytes.Buffer{}
+		w := multipart.NewWriter(buffer)
+		for fieldName, property := range test.params {
+			err := w.WriteField(fieldName, property[0])
+			if err != nil {
+				t.Fatalf("CreateUser() failed to create multipart form: got err=%v", err)
+			}
+		}
+		w.Close()
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New(url, nil, &TestKeyGenerator{}, "")
+			s, _ := New(url, NewTestDatastore(url, nil, nil), &TestKeyGenerator{}, "fakeredis", redis.Addr())
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			registrationURL := fmt.Sprintf("%s/api/register", server.URL)
-			resp, err := http.PostForm(registrationURL, test.params)
+			resp, err := http.Post(registrationURL, w.FormDataContentType(), buffer)
 			if err != nil {
-				t.Errorf("%s: returned an unexpected err: got=%v want=%v", registrationURL, err, nil)
+				t.Errorf("%s: returned an unexpected err: got err=%v", registrationURL, err)
 			}
 			defer resp.Body.Close()
 			gotStatus := resp.StatusCode
@@ -306,7 +325,7 @@ func TestWebfingerKnownAccount(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), nil, "")
+			s, _ := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), nil, "", "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -358,7 +377,7 @@ func TestWebfinger(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New(url, NewTestDatastore(url, nil, nil), nil, "")
+			s, _ := New(url, NewTestDatastore(url, nil, nil), nil, "", "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -396,7 +415,7 @@ func TestLogin(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			datastore := NewTestDatastore(url, nil, nil)
 			secret := "thisisatestsecret"
-			s, _ := New(url, datastore, nil, secret)
+			s, _ := New(url, datastore, nil, secret, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			u := &user.User{

@@ -59,7 +59,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	s, err := server.New(url, datastore, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"))
+	s, err := server.New(url, datastore, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"), "redis:6379")
 	if err != nil {
 		log.Fatalf("failed to create service: got err=%v", err)
 	}
