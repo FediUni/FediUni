@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/FediUni/FediUni/server/client"
 	"net/http"
 	"net/url"
 
@@ -42,12 +43,12 @@ func main() {
 		log.Fatalf("failed to receive SECRET")
 	}
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client(), options.Client().ApplyURI(mongoURI))
+	mongoClient, err := mongo.Connect(ctx, options.Client(), options.Client().ApplyURI(mongoURI))
 	if err != nil {
 		log.Fatalf("failed to connect to MongoDB: %v", err)
 	}
 	defer func() {
-		if err := client.Disconnect(ctx); err != nil {
+		if err := mongoClient.Disconnect(ctx); err != nil {
 			log.Fatalf("failed to disconnect MongoDB client: %v", err)
 		}
 	}()
@@ -55,11 +56,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to parse instanceURL=%q: got err=%v", instanceURL, err)
 	}
-	datastore, err := mongowrapper.NewDatastore(client, "FediUni", url)
+	datastore, err := mongowrapper.NewDatastore(mongoClient, "FediUni", url)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	s, err := server.New(url, datastore, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"), "redis:6379")
+	redisAddress := "redis:6379"
+	httpClient := client.NewClient(url, redisAddress, viper.GetString("REDIS_PASSWORD"))
+	s, err := server.New(url, datastore, httpClient, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"), redisAddress)
 	if err != nil {
 		log.Fatalf("failed to create service: got err=%v", err)
 	}

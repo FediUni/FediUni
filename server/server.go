@@ -75,6 +75,23 @@ type Datastore interface {
 	GetAnnounceStatus(context.Context, *url.URL, *url.URL) (bool, error)
 }
 
+type Client interface {
+	FetchRemoteObject(context.Context, *url.URL, bool, int, int) (vocab.Type, error)
+	FetchRemoteActor(ctx context.Context, s string) (actor.Actor, error)
+	DereferenceFollowers(ctx context.Context, property vocab.ActivityStreamsFollowersProperty, i int, i2 int) error
+	DereferenceFollowing(ctx context.Context, property vocab.ActivityStreamsFollowingProperty, i int, i2 int) error
+	DereferenceOutbox(ctx context.Context, property vocab.ActivityStreamsOutboxProperty, i int, i2 int) error
+	DereferenceObjectsInOrderedCollection(ctx context.Context, collection vocab.ActivityStreamsOrderedCollection, i int, i2 int, i3 int) (vocab.ActivityStreamsOrderedCollectionPage, error)
+	DereferenceOrderedItems(ctx context.Context, property vocab.ActivityStreamsOrderedItemsProperty, i int, i2 int) error
+	FetchRemotePerson(ctx context.Context, identifier string) (vocab.ActivityStreamsPerson, error)
+	DereferenceRecipientInboxes(ctx context.Context, deliver activity.Activity) ([]*url.URL, error)
+	PostToInbox(ctx context.Context, inbox *url.URL, deliver vocab.Type, id string, key *rsa.PrivateKey) error
+	LookupInstanceDetails(ctx context.Context, id *url.URL) (*client.InstanceDetails, error)
+	ResolveActorIdentifierToID(ctx context.Context, otherUser string) (*url.URL, error)
+	Create(ctx context.Context, create vocab.ActivityStreamsCreate, i int, i2 int) error
+	Announce(ctx context.Context, announce vocab.ActivityStreamsAnnounce, i int, i2 int) error
+}
+
 type Server struct {
 	URL          *url.URL
 	Router       *chi.Mux
@@ -83,7 +100,7 @@ type Server struct {
 	Datastore    Datastore
 	Redis        *redis.Client
 	KeyGenerator actor.KeyGenerator
-	Client       *client.Client
+	Client       Client
 	Policy       *bluemonday.Policy
 	Secret       string
 }
@@ -92,13 +109,9 @@ var (
 	tokenAuth *jwtauth.JWTAuth
 )
 
-func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenerator, secret, redisAddress string) (*Server, error) {
+func New(instanceURL *url.URL, datastore Datastore, client Client, keyGenerator actor.KeyGenerator, secret, redisAddress string) (*Server, error) {
 	tokenAuth = jwtauth.New("HS256", []byte(secret), nil)
 	fileHandler, err := file.NewHandler(viper.GetString("IMAGES_ROOT"))
-	if err != nil {
-		return nil, err
-	}
-	client := client.NewClient(instanceURL, redisAddress, viper.GetString("REDIS_PASSWORD"))
 	if err != nil {
 		return nil, err
 	}
@@ -1952,7 +1965,6 @@ func (s *Server) Webfinger(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load actor", http.StatusInternalServerError)
 	}
 	w.WriteHeader(200)
-
 	w.Write(response)
 }
 

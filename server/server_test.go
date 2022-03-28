@@ -127,6 +127,27 @@ func (d *TestDatastore) GetActorOutboxAsOrderedCollection(context.Context, strin
 	return nil, fmt.Errorf("GetActorOutboxAsOrderedCollection() is unimplemented")
 }
 
+type TestClient struct {
+	Client
+	knownActors map[string]actor.Person
+}
+
+func NewTestClient(a actor.Person) *TestClient {
+	return &TestClient{
+		knownActors: map[string]actor.Person{
+			"@brandonstark@testserver.com": a,
+		},
+	}
+}
+
+func (c *TestClient) FetchRemoteActor(_ context.Context, identifier string) (actor.Actor, error) {
+	a := c.knownActors[identifier]
+	if a == nil {
+		return nil, fmt.Errorf("failed to fetch actor=%q", identifier)
+	}
+	return a, nil
+}
+
 type TestKeyGenerator struct{}
 
 func (g *TestKeyGenerator) GenerateKeyPair() (string, string, error) {
@@ -175,7 +196,7 @@ func TestGetActor(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			viper.Set("IMAGES_ROOT", "/tmp")
-			s, err := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), nil, "", "")
+			s, err := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), nil, nil, "", "")
 			if err != nil {
 				t.Fatalf("Failed to create server: got err=%v", err)
 			}
@@ -185,6 +206,75 @@ func TestGetActor(t *testing.T) {
 			if err != nil {
 				t.Errorf("getActor() returned an unexpected err: got %v want %v", err, nil)
 			}
+			defer res.Body.Close()
+			body, err := ioutil.ReadAll(res.Body)
+			if err != nil {
+				t.Errorf("getActor() failed to read from body: got err=%v", err)
+			}
+			gotStatus := res.StatusCode
+			var gotActor map[string]interface{}
+			if gotStatus == http.StatusOK {
+				if err := json.Unmarshal(body, &gotActor); err != nil {
+					t.Errorf("getActor() returned an unexpected result: failed to unmarshal JSON, got err=%v", err)
+				}
+				gotActor["@context"] = nil
+			}
+			var wantActor map[string]interface{}
+			if test.wantRes != nil {
+				wantActor, err = streams.Serialize(test.wantRes)
+				if err != nil {
+					t.Errorf("getActor() failed to serialize Want Actor: got err=%v", err)
+				}
+				wantActor["@context"] = nil
+			}
+			if gotStatus != test.wantStatus {
+				t.Errorf("getActor() returned an unexpected status: got %v want %v", gotStatus, test.wantStatus)
+			}
+			if d := cmp.Diff(wantActor, gotActor); d != "" {
+				t.Errorf("getActor() returned an unexpected diff: (+got -want) %s", d)
+			}
+		})
+	}
+}
+
+func TestGetAnyActor(t *testing.T) {
+	url, err := url.Parse("https://testserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: got err=%v", err)
+	}
+	keyGenerator := actor.NewRSAKeyGenerator()
+	personGenerator := actor.NewPersonGenerator(url, keyGenerator)
+	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
+
+	tests := []struct {
+		name       string
+		username   string
+		wantRes    actor.Actor
+		wantStatus int
+		wantErr    bool
+	}{
+		{
+			name:       "Test get actor",
+			username:   "brandonstark",
+			wantRes:    person,
+			wantStatus: http.StatusOK,
+			wantErr:    false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			viper.Set("IMAGES_ROOT", "/tmp")
+			s, err := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), NewTestClient(person), nil, "", "")
+			if err != nil {
+				t.Fatalf("Failed to create server: got err=%v", err)
+			}
+			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/actor?identifier=@%s@%s", test.username, "testserver.com"), nil)
+			if err != nil {
+				t.Errorf("getActor() returned an unexpected err: got %v want %v", err, nil)
+			}
+			w := httptest.NewRecorder()
+			s.getAnyActor(w, req)
+			res := w.Result()
 			defer res.Body.Close()
 			body, err := ioutil.ReadAll(res.Body)
 			if err != nil {
@@ -271,7 +361,7 @@ func TestCreateUser(t *testing.T) {
 		}
 		w.Close()
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New(url, NewTestDatastore(url, nil, nil), &TestKeyGenerator{}, "fakesecret", redis.Addr())
+			s, _ := New(url, NewTestDatastore(url, nil, nil), nil, &TestKeyGenerator{}, "fakesecret", redis.Addr())
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			registrationURL := fmt.Sprintf("%s/api/register", server.URL)
@@ -322,7 +412,7 @@ func TestWebfingerKnownAccount(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), nil, "", "")
+			s, _ := New(url, NewTestDatastore(url, person, keyGenerator.PrivateKey), nil, nil, "", "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -374,7 +464,7 @@ func TestWebfinger(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New(url, NewTestDatastore(url, nil, nil), nil, "", "")
+			s, _ := New(url, NewTestDatastore(url, nil, nil), nil, nil, "", "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			webfingerURL := fmt.Sprintf("%s/.well-known/webfinger", server.URL)
@@ -412,7 +502,7 @@ func TestLogin(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			datastore := NewTestDatastore(url, nil, nil)
 			secret := "thisisatestsecret"
-			s, _ := New(url, datastore, nil, secret, "")
+			s, _ := New(url, datastore, nil, nil, secret, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			u := &user.User{
