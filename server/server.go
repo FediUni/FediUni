@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/FediUni/FediUni/server/activity"
@@ -179,23 +178,6 @@ func New(instanceURL *url.URL, datastore Datastore, keyGenerator actor.KeyGenera
 	s.Router.Get("/.well-known/webfinger", s.Webfinger)
 	s.Router.Mount("/api", activitypubRouter)
 	return s, nil
-}
-
-func (s *Server) homepage(w http.ResponseWriter, _ *http.Request) {
-	homeTemplate := template.New("Home")
-	homeTemplate, err := homeTemplate.Parse(`<html>
-		<head>
-			<title>FediUni</title>
-		</head>
-		<body>
-			<p>This website is a WIP instance of the FediUni application. The source code for this application can be found <a href="https://github.com/FediUni/FediUni">here</a>.</p>
-		</body>
-	</html>`)
-	if err != nil {
-		log.Errorf("failed to parse home page template: got err=%v", err)
-		return
-	}
-	homeTemplate.Execute(w, "Home")
 }
 
 // getActor returns the ActivityPub actor with a corresponding username.
