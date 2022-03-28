@@ -6,13 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/alicebob/miniredis/v2"
-
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/FediUni/FediUni/server/actor"
@@ -22,7 +20,6 @@ import (
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -199,6 +196,7 @@ func TestGetActor(t *testing.T) {
 				if err := json.Unmarshal(body, &gotActor); err != nil {
 					t.Errorf("getActor() returned an unexpected result: failed to unmarshal JSON, got err=%v", err)
 				}
+				gotActor["@context"] = nil
 			}
 			var wantActor map[string]interface{}
 			if test.wantRes != nil {
@@ -206,13 +204,12 @@ func TestGetActor(t *testing.T) {
 				if err != nil {
 					t.Errorf("getActor() failed to serialize Want Actor: got err=%v", err)
 				}
+				wantActor["@context"] = nil
 			}
 			if gotStatus != test.wantStatus {
 				t.Errorf("getActor() returned an unexpected status: got %v want %v", gotStatus, test.wantStatus)
 			}
-			if d := cmp.Diff(wantActor, gotActor, cmpopts.SortSlices(func(s1, s2 string) bool {
-				return strings.Compare(s1, s2) < 0
-			})); d != "" {
+			if d := cmp.Diff(wantActor, gotActor); d != "" {
 				t.Errorf("getActor() returned an unexpected diff: (+got -want) %s", d)
 			}
 		})
@@ -274,7 +271,7 @@ func TestCreateUser(t *testing.T) {
 		}
 		w.Close()
 		t.Run(test.name, func(t *testing.T) {
-			s, _ := New(url, NewTestDatastore(url, nil, nil), &TestKeyGenerator{}, "fakeredis", redis.Addr())
+			s, _ := New(url, NewTestDatastore(url, nil, nil), &TestKeyGenerator{}, "fakesecret", redis.Addr())
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
 			registrationURL := fmt.Sprintf("%s/api/register", server.URL)
