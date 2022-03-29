@@ -21,7 +21,6 @@ import (
 	"github.com/FediUni/FediUni/server/actor"
 	"github.com/FediUni/FediUni/server/client"
 	"github.com/FediUni/FediUni/server/follower"
-	"github.com/FediUni/FediUni/server/undo"
 	"github.com/FediUni/FediUni/server/user"
 	"github.com/FediUni/FediUni/server/validation"
 	"github.com/dgrijalva/jwt-go"
@@ -1720,7 +1719,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 // See: https://www.w3.org/TR/activitypub/#undo-activity-outbox
 func (s *Server) undo(ctx context.Context, activityRequest vocab.Type) error {
 	log.Infoln("Received Undo Activity")
-	undoRequest, err := undo.ParseUndoRequest(ctx, activityRequest)
+	undoRequest, err := activity.ParseUndoActivity(ctx, activityRequest)
 	if err != nil {
 		return fmt.Errorf("failed to parse Undo activity: got err=%v", err)
 	}

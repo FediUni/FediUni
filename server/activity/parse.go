@@ -90,6 +90,9 @@ func ParseLikeActivity(ctx context.Context, activity vocab.Type) (vocab.Activity
 }
 
 func ParseFollowActivity(ctx context.Context, activity vocab.Type) (vocab.ActivityStreamsFollow, error) {
+	if activity == nil {
+		return nil, fmt.Errorf("failed to receive an Activity to parse: got=%v", activity)
+	}
 	var follow vocab.ActivityStreamsFollow
 	followResolver, err := streams.NewTypeResolver(func(ctx context.Context, f vocab.ActivityStreamsFollow) error {
 		follow = f
@@ -107,6 +110,9 @@ func ParseFollowActivity(ctx context.Context, activity vocab.Type) (vocab.Activi
 }
 
 func ParseAcceptActivity(ctx context.Context, activity vocab.Type) (vocab.ActivityStreamsAccept, error) {
+	if activity == nil {
+		return nil, fmt.Errorf("failed to receive an Activity to parse: got=%v", activity)
+	}
 	var accept vocab.ActivityStreamsAccept
 	acceptResolver, err := streams.NewTypeResolver(func(ctx context.Context, a vocab.ActivityStreamsAccept) error {
 		accept = a
@@ -124,9 +130,12 @@ func ParseAcceptActivity(ctx context.Context, activity vocab.Type) (vocab.Activi
 }
 
 func ParseDeleteActivity(ctx context.Context, activity vocab.Type) (vocab.ActivityStreamsDelete, error) {
-	var delete vocab.ActivityStreamsDelete
+	if activity == nil {
+		return nil, fmt.Errorf("failed to receive an Activity to parse: got=%v", activity)
+	}
+	var deleteActivity vocab.ActivityStreamsDelete
 	deleteResolver, err := streams.NewTypeResolver(func(ctx context.Context, d vocab.ActivityStreamsDelete) error {
-		delete = d
+		deleteActivity = d
 		return nil
 	})
 	if err != nil {
@@ -136,5 +145,24 @@ func ParseDeleteActivity(ctx context.Context, activity vocab.Type) (vocab.Activi
 		return nil, fmt.Errorf("failed to resolve activity to Delete activity: got err=%v", err)
 	}
 	log.Infoln("Successfully resolved Type to Delete Activity")
-	return delete, nil
+	return deleteActivity, nil
+}
+
+func ParseUndoActivity(ctx context.Context, activity vocab.Type) (vocab.ActivityStreamsUndo, error) {
+	if activity == nil {
+		return nil, fmt.Errorf("failed to receive an Activity to parse: got=%v", activity)
+	}
+	var undo vocab.ActivityStreamsUndo
+	undoResolver, err := streams.NewTypeResolver(func(ctx context.Context, u vocab.ActivityStreamsUndo) error {
+		undo = u
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resolver: got err=%v", err)
+	}
+	if err := undoResolver.Resolve(ctx, activity); err != nil {
+		return nil, fmt.Errorf("failed to resolve activity to Undo activity: got err=%v", err)
+	}
+	log.Infoln("Successfully resolved Type to Undo Activity")
+	return undo, nil
 }
