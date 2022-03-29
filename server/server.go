@@ -1727,7 +1727,6 @@ func (s *Server) undo(ctx context.Context, activityRequest vocab.Type) error {
 	if object == nil {
 		return fmt.Errorf("failed to receive Object in Undo activity body: got %v", object)
 	}
-	object.Begin().IsActivityStreamsFollow()
 	switch iter := object.Begin(); {
 	case iter.IsActivityStreamsFollow():
 		follow := object.Begin().GetActivityStreamsFollow()
