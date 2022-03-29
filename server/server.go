@@ -209,14 +209,9 @@ func (s *Server) getActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load local actor", http.StatusNotFound)
 		return
 	}
-	serializedPerson, err := streams.Serialize(actor)
+	m, err := activity.JSON(actor)
 	if err != nil {
 		log.Errorf("failed to serialize actor with ID=%q: got err=%v", username, err)
-		http.Error(w, "failed to load local actor", http.StatusNotFound)
-	}
-	m, err := json.Marshal(serializedPerson)
-	if err != nil {
-		log.Errorf("failed to marshal actor with ID=%q: got err=%v", username, err)
 		http.Error(w, "failed to load local actor", http.StatusNotFound)
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
@@ -305,20 +300,14 @@ func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load actor", http.StatusInternalServerError)
 		return
 	}
-	m, err := streams.Serialize(a)
+	m, err := activity.JSON(a)
 	if err != nil {
 		log.Errorf("failed to serialize actor: got err=%v", err)
 		http.Error(w, "Failed to load actor", http.StatusInternalServerError)
 		return
 	}
-	marshalledActivity, err := json.Marshal(m)
-	if err != nil {
-		log.Errorf("failed to marshal actor to JSON: got err=%v", err)
-		http.Error(w, "Failed to load actor", http.StatusInternalServerError)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
-	w.Write(marshalledActivity)
+	w.Write(m)
 }
 
 func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
@@ -341,20 +330,14 @@ func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load Outbox", http.StatusNotFound)
 		return
 	}
-	m, err := streams.Serialize(page)
+	m, err := activity.JSON(page)
 	if err != nil {
 		log.Errorf("failed to serialize %v: got err=%v", page, err)
 		http.Error(w, "Failed to load Outbox", http.StatusNotFound)
 		return
 	}
-	serializedOutbox, err := json.Marshal(m)
-	if err != nil {
-		log.Errorf("failed to serialize %v: got err=%v", m, err)
-		http.Error(w, "Failed to load Outbox", http.StatusNotFound)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
-	w.Write(serializedOutbox)
+	w.Write(m)
 }
 
 func (s *Server) getFollowers(w http.ResponseWriter, r *http.Request) {
@@ -369,21 +352,15 @@ func (s *Server) getFollowers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
-	m, err := streams.Serialize(followers)
+	m, err := activity.JSON(followers)
 	if err != nil {
 		log.Errorf("failed to serialize activity : got err=%v", err)
 		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
-	marshalledActivity, err := json.Marshal(m)
-	if err != nil {
-		log.Errorf("failed to marshal activity to JSON: got err=%v", err)
-		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledActivity)
+	w.Write(m)
 }
 
 func (s *Server) getFollowing(w http.ResponseWriter, r *http.Request) {
@@ -398,21 +375,15 @@ func (s *Server) getFollowing(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
-	m, err := streams.Serialize(followers)
+	m, err := activity.JSON(followers)
 	if err != nil {
 		log.Errorf("failed to serialize activity : got err=%v", err)
 		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
-	marshalledActivity, err := json.Marshal(m)
-	if err != nil {
-		log.Errorf("failed to marshal activity to JSON: got err=%v", err)
-		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledActivity)
+	w.Write(m)
 }
 
 func (s *Server) getLiked(w http.ResponseWriter, r *http.Request) {
@@ -427,21 +398,15 @@ func (s *Server) getLiked(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
-	m, err := streams.Serialize(liked)
+	m, err := activity.JSON(liked)
 	if err != nil {
 		log.Errorf("failed to serialize activity : got err=%v", err)
 		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
-	marshalledActivity, err := json.Marshal(m)
-	if err != nil {
-		log.Errorf("failed to marshal activity to JSON: got err=%v", err)
-		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledActivity)
+	w.Write(m)
 }
 
 func (s *Server) getActivityLikes(w http.ResponseWriter, r *http.Request) {
@@ -456,21 +421,15 @@ func (s *Server) getActivityLikes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
-	m, err := streams.Serialize(liked)
+	m, err := activity.JSON(liked)
 	if err != nil {
 		log.Errorf("failed to serialize activity : got err=%v", err)
 		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
 		return
 	}
-	marshalledActivity, err := json.Marshal(m)
-	if err != nil {
-		log.Errorf("failed to marshal activity to JSON: got err=%v", err)
-		http.Error(w, "Failed to load followers", http.StatusInternalServerError)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledActivity)
+	w.Write(m)
 }
 
 func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
@@ -525,21 +484,15 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	serializedInbox, err := streams.Serialize(inbox)
+	m, err := activity.JSON(inbox)
 	if err != nil {
 		log.Errorf("Failed to serialize Inbox of Username=%q: got err=%v", username, err)
 		http.Error(w, fmt.Sprintf("Failed to load Actor Inbox"), http.StatusInternalServerError)
 		return
 	}
-	marshalledOrderedCollection, err := json.Marshal(serializedInbox)
-	if err != nil {
-		log.Errorf("Failed to marshal Inbox of Username=%q: got err=%v", username, err)
-		http.Error(w, fmt.Sprintf("Failed to load Actor Inbox"), http.StatusInternalServerError)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledOrderedCollection)
+	w.Write(m)
 }
 
 func (s *Server) getPublicInbox(w http.ResponseWriter, r *http.Request) {
@@ -577,21 +530,15 @@ func (s *Server) getPublicInbox(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	serializedInbox, err := streams.Serialize(inbox)
+	m, err := activity.JSON(inbox)
 	if err != nil {
 		log.Errorf("Failed to serialize Public Inbox: got err=%v", err)
 		http.Error(w, fmt.Sprintf("Failed to load Public Inbox"), http.StatusInternalServerError)
 		return
 	}
-	marshalledInbox, err := json.Marshal(serializedInbox)
-	if err != nil {
-		log.Errorf("Failed to marshal Public Inbox: got err=%v", err)
-		http.Error(w, fmt.Sprintf("Failed to load Public Inbox"), http.StatusInternalServerError)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledInbox)
+	w.Write(m)
 }
 
 func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
@@ -599,28 +546,21 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 	if activityID == "" {
 		http.Error(w, "activityID is unspecified", http.StatusBadRequest)
 	}
-	activity, err := s.Datastore.GetActivityByObjectID(r.Context(), activityID, s.URL.String())
+	a, err := s.Datastore.GetActivityByObjectID(r.Context(), activityID, s.URL.String())
 	if err != nil {
 		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
 		http.Error(w, "failed to load activity", http.StatusNotFound)
 		return
 	}
-	serializedActivity, err := streams.Serialize(activity)
+	m, err := activity.JSON(a)
 	if err != nil {
 		log.Errorf("failed to serialize activity with ID=%q: got err=%v", activityID, err)
 		http.Error(w, "failed to load activity", http.StatusNotFound)
 		return
 	}
-	marshalledActivity, err := json.Marshal(serializedActivity)
-	if err != nil {
-		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
-		http.Error(w, "failed to load activity", http.StatusNotFound)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
-
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledActivity)
+	w.Write(m)
 }
 
 func (s *Server) getActivityObject(w http.ResponseWriter, r *http.Request) {
@@ -628,29 +568,21 @@ func (s *Server) getActivityObject(w http.ResponseWriter, r *http.Request) {
 	if activityID == "" {
 		http.Error(w, "activityID is unspecified", http.StatusBadRequest)
 	}
-	activity, err := s.Datastore.GetActivityByObjectID(r.Context(), activityID, s.URL.String())
+	a, err := s.Datastore.GetActivityByObjectID(r.Context(), activityID, s.URL.String())
 	if err != nil {
 		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
 		http.Error(w, "failed to load activity", http.StatusNotFound)
 		return
 	}
-
-	serializedActivity, err := streams.Serialize(activity)
+	m, err := activity.JSON(a)
 	if err != nil {
 		log.Errorf("failed to serialize activity with ID=%q: got err=%v", activityID, err)
 		http.Error(w, "failed to load activity", http.StatusNotFound)
 		return
 	}
-	marshalledActivity, err := json.Marshal(serializedActivity)
-	if err != nil {
-		log.Errorf("failed to get activity with ID=%q: got err=%v", activityID, err)
-		http.Error(w, "failed to load activity", http.StatusNotFound)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
-
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledActivity)
+	w.Write(m)
 }
 
 // getActorOutbox returns activities posted by the actor as OrderedCollectionPages.
@@ -690,21 +622,15 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	serializedOutbox, err := streams.Serialize(outbox)
+	m, err := activity.JSON(outbox)
 	if err != nil {
 		log.Errorf("Failed to serialize Outbox of Actor ID=%q: got err=%v", username, err)
 		http.Error(w, fmt.Sprintf("Failed to load Actor Outbox"), http.StatusInternalServerError)
 		return
 	}
-	marshalledOutbox, err := json.Marshal(serializedOutbox)
-	if err != nil {
-		log.Errorf("Failed to marshal Outbox of Actor ID=%q: got err=%v", username, err)
-		http.Error(w, fmt.Sprintf("Failed to load Actor Outbox"), http.StatusInternalServerError)
-		return
-	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledOutbox)
+	w.Write(m)
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
@@ -816,12 +742,12 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
 		return
 	}
-	activity := r.URL.Query().Get("id")
-	if activity == "" {
+	a := r.URL.Query().Get("id")
+	if a == "" {
 		http.Error(w, "Activity ID is unspecified", http.StatusBadRequest)
 		return
 	}
-	activityID, err := url.Parse(activity)
+	activityID, err := url.Parse(a)
 	if err != nil {
 		http.Error(w, "Activity ID is not a URL", http.StatusBadRequest)
 		return
@@ -844,19 +770,14 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to retrieve a Create or Announce activity", http.StatusBadRequest)
 		return
 	}
-	serializedActivity, err := streams.Serialize(object)
-	if err != nil {
-		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
-		return
-	}
-	marshalledActivity, err := json.Marshal(serializedActivity)
+	m, err := activity.JSON(object)
 	if err != nil {
 		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledActivity)
+	w.Write(m)
 }
 
 // GetAnyActivity fetches the remote Activity and forces an update.
@@ -868,12 +789,12 @@ func (s *Server) getAnyLikes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to receive JWT"), http.StatusUnauthorized)
 		return
 	}
-	activity := r.URL.Query().Get("id")
-	if activity == "" {
+	a := r.URL.Query().Get("id")
+	if a == "" {
 		http.Error(w, "Activity ID is unspecified", http.StatusBadRequest)
 		return
 	}
-	activityID, err := url.Parse(activity)
+	activityID, err := url.Parse(a)
 	if err != nil {
 		http.Error(w, "Activity ID is not a URL", http.StatusBadRequest)
 		return
@@ -886,19 +807,14 @@ func (s *Server) getAnyLikes(w http.ResponseWriter, r *http.Request) {
 		numberOfLikes.Set(0)
 		likes.SetActivityStreamsTotalItems(numberOfLikes)
 	}
-	serializedActivity, err := streams.Serialize(likes)
-	if err != nil {
-		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
-		return
-	}
-	marshalledActivity, err := json.Marshal(serializedActivity)
+	m, err := activity.JSON(likes)
 	if err != nil {
 		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledActivity)
+	w.Write(m)
 }
 
 // CheckLikeStatus determines if the specified Actor liked the provided Object.
