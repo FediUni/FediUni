@@ -1627,7 +1627,7 @@ func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest voca
 // activity is sent.
 func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.Type) error {
 	log.Infoln("Received Follow Activity")
-	follow, err := follower.ParseFollowRequest(ctx, activityRequest)
+	follow, err := activity.ParseFollowActivity(ctx, activityRequest)
 	if err != nil {
 		return fmt.Errorf("failed to parse handleFollowRequest activityRequest: got err=%v", err)
 	}
@@ -1857,7 +1857,7 @@ func (s *Server) like(ctx context.Context, activityRequest vocab.Type) error {
 }
 
 func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) error {
-	accept, err := follower.ParseAcceptActivity(ctx, activityRequest)
+	accept, err := activity.ParseAcceptActivity(ctx, activityRequest)
 	if err != nil {
 		return err
 	}
@@ -1885,7 +1885,7 @@ func (s *Server) handleAccept(ctx context.Context, activityRequest vocab.Type) e
 	if err != nil {
 		return fmt.Errorf("failed to load follow Activity=%q: got err=%v", objectID.String(), err)
 	}
-	follow, err := follower.ParseFollowRequest(ctx, loadedObject)
+	follow, err := activity.ParseFollowActivity(ctx, loadedObject)
 	if err != nil {
 		return fmt.Errorf("failed parse follow Activity: got err=%v", err)
 	}
