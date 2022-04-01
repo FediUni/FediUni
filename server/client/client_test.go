@@ -159,3 +159,95 @@ func TestCreate(t *testing.T) {
 		})
 	}
 }
+
+func TestAnnounce(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   []string
+		value []map[string]interface{}
+		want  map[string]interface{}
+	}{
+		{
+			name: "Test dereference Actor IRI in Announce Activity",
+			key: []string{
+				"https://non-existent-site.com/activity/fake-create",
+				"https://non-existent-site.com/actor/fake-actor",
+				"https://non-existent-site.com/object/fake-note",
+			},
+			value: []map[string]interface{}{
+				{
+					"@context": "https://www.w3.org/ns/activitystreams",
+					"id":       "https://non-existent-site.com/actor/fake-create",
+					"type":     "Announce",
+					"actor":    "https://non-existent-site.com/actor/fake-actor",
+					"object":   "https://non-existent-site.com/object/fake-note",
+				},
+				{
+					"@context": "https://www.w3.org/ns/activitystreams",
+					"id":       "https://non-existent-site.com/actor/fake-actor",
+					"type":     "Person",
+				},
+				{
+					"@context":     "https://www.w3.org/ns/activitystreams",
+					"id":           "https://non-existent-site.com/object/fake-note",
+					"type":         "Note",
+					"attributedTo": "https://non-existent-site.com/actor/fake-actor",
+				},
+			},
+			want: map[string]interface{}{
+				"@context": "https://www.w3.org/ns/activitystreams",
+				"id":       "https://non-existent-site.com/actor/fake-create",
+				"type":     "Announce",
+				"actor": map[string]interface{}{
+					"id":   "https://non-existent-site.com/actor/fake-actor",
+					"type": "Person",
+				},
+				"object": map[string]interface{}{
+					"id":   "https://non-existent-site.com/object/fake-note",
+					"type": "Note",
+					"attributedTo": map[string]interface{}{
+						"id":   "https://non-existent-site.com/actor/fake-actor",
+						"type": "Person",
+					},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		marshalledAnnounce, err := json.Marshal(test.value[0])
+		if err != nil {
+			t.Fatalf("failed to marshal value: got err=%v", err)
+		}
+		marshalledActor, err := json.Marshal(test.value[1])
+		if err != nil {
+			t.Fatalf("failed to marshal value: got err=%v", err)
+		}
+		marshalledNote, err := json.Marshal(test.value[2])
+		if err != nil {
+			t.Fatalf("failed to marshal value: got err=%v", err)
+		}
+		t.Run(test.name, func(t *testing.T) {
+			client := &Client{
+				Cache: &TestCache{
+					cache: map[string][]byte{
+						test.key[0]: marshalledAnnounce,
+						test.key[1]: marshalledActor,
+						test.key[2]: marshalledNote,
+					},
+				},
+			}
+			iri, err := url.Parse(test.key[0])
+			if err != nil {
+				t.Errorf("failed to parse key=%q: got err=%v", test.key, err)
+			}
+			object, err := client.FetchRemoteObject(context.Background(), iri, false, 0, 1)
+			if err != nil {
+				t.Errorf("client.FetchRemoteObject(): failed to fetch remote object: got err=%v", err)
+			}
+			gotObject, err := streams.Serialize(object)
+			if d := cmp.Diff(gotObject, test.want); d != "" {
+				t.Errorf("client.FetchRemoteObject(): returned a different object: (-want +got) %s", d)
+			}
+		})
+	}
+}
