@@ -12,14 +12,17 @@ import (
 )
 
 type testDatastore struct {
-	Actors   map[string]vocab.ActivityStreamsPerson
-	Outboxes map[string]vocab.ActivityStreamsOrderedCollection
+	Actors  map[string]vocab.ActivityStreamsPerson
+	Objects map[string]vocab.Type
 }
 
 func newTestDatastore() *testDatastore {
 	return &testDatastore{
 		Actors: map[string]vocab.ActivityStreamsPerson{
 			"brandonstark": generateTestPerson(),
+		},
+		Objects: map[string]vocab.Type{
+			"http://testserver.com/actor/brandonstark/outbox": generateTestOutbox(),
 		},
 	}
 }
@@ -56,8 +59,20 @@ func (d testDatastore) GetPublicInboxAsOrderedCollection(ctx context.Context, b 
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func (d testDatastore) GetActorOutbox(ctx context.Context, s string, s2 string, s3 string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d testDatastore) GetActorOutbox(ctx context.Context, username string, minID string, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	actor := d.Actors[username]
+	if actor == nil {
+		return nil, fmt.Errorf("failed to load Actor Outbox")
+	}
+	outbox := actor.GetActivityStreamsOutbox()
+	if outbox == nil {
+		return nil, fmt.Errorf("failed to load Actor Outbox")
+	}
+	collection := d.Objects[outbox.GetIRI().String()]
+	if collection == nil {
+		return nil, fmt.Errorf("failed to load Actor Outbox")
+	}
+	return generateTestOutboxPage(), nil
 }
 
 func (d testDatastore) GetActorOutboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
@@ -125,7 +140,9 @@ func (c testClient) DereferenceObjectsInOrderedCollection(ctx context.Context, c
 }
 
 func (c testClient) DereferenceOrderedItems(ctx context.Context, items vocab.ActivityStreamsOrderedItemsProperty, depth int, maxDepth int) error {
-	return fmt.Errorf("DereferenceOrderedItems(): unimplemented")
+	create, _ := object.WrapInCreate(context.Background(), generateTestNote(), generateTestPerson())
+	items.SetType(0, create)
+	return nil
 }
 
 func (c testClient) DereferenceItem(context.Context, vocab.Type, int, int) (vocab.Type, error) {
@@ -261,6 +278,59 @@ func TestGetAnyOutbox(t *testing.T) {
 			page, err := server.GetAnyOutbox(context.Background(), test.identifier, test.page)
 			if err != nil && !test.wantErr {
 				t.Fatalf("GetAnyOutbox() returned an unexpected error: got err=%v", err)
+			}
+			var gotPage, wantPage map[string]interface{}
+			if page != nil {
+				gotPage, err = streams.Serialize(page)
+				if err != nil && !test.wantErr {
+					t.Fatalf("Failed to Serialize Got Page: got err=%v", err)
+				}
+			}
+			if test.wantPage != nil {
+				wantPage, err = streams.Serialize(test.wantPage)
+				if err != nil && !test.wantErr {
+					t.Fatalf("Failed to Serialize Want Person: got err=%v", err)
+				}
+			}
+			if d := cmp.Diff(wantPage, gotPage); d != "" {
+				t.Errorf("GetAnyOutbox() returned an unexpected diff: (+got -want) %s", d)
+			}
+		})
+	}
+}
+
+func TestGetOutboxPage(t *testing.T) {
+	tests := []struct {
+		name     string
+		username string
+		minID    string
+		maxID    string
+		wantErr  bool
+		wantPage vocab.ActivityStreamsOrderedCollectionPage
+	}{
+		{
+			name:     "Test get outbox of person that exists",
+			username: "brandonstark",
+			minID:    "",
+			maxID:    "",
+			wantPage: generateTestOutboxPageDereferenced(),
+			wantErr:  false,
+		},
+		{
+			name:     "Test non-existent actor",
+			username: "fakeactor",
+			minID:    "",
+			maxID:    "",
+			wantPage: nil,
+			wantErr:  true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := NewServer(nil, newTestDatastore(), newTestClient(), nil)
+			page, err := server.GetOutboxPage(context.Background(), test.username, test.minID, test.maxID)
+			if err != nil && !test.wantErr {
+				t.Fatalf("GetOutboxPage() returned an unexpected error: got err=%v", err)
 			}
 			var gotPage, wantPage map[string]interface{}
 			if page != nil {

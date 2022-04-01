@@ -201,7 +201,7 @@ func (s *Server) GetOutbox(ctx context.Context, username string) (vocab.Activity
 func (s *Server) GetOutboxPage(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
 	page, err := s.Datastore.GetActorOutbox(ctx, username, minID, maxID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read from Inbox of Username=%q: got err=%v", username, err)
+		return nil, fmt.Errorf("failed to read from Outbox of Username=%q: got err=%v", username, err)
 	}
 	orderedItems := page.GetActivityStreamsOrderedItems()
 	if orderedItems == nil {
