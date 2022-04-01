@@ -56,6 +56,7 @@ type Cache interface {
 type Client struct {
 	InstanceURL *url.URL
 	Cache       Cache
+	Client      *http.Client
 }
 
 // RedisCache wraps a Redis Client to implement the Cache interface.
@@ -81,6 +82,7 @@ func (c *RedisCache) Load(key string) ([]byte, error) {
 func NewClient(instance *url.URL, address string, password string) *Client {
 	return &Client{
 		InstanceURL: instance,
+		Client:      &http.Client{},
 		Cache: &RedisCache{
 			redis.NewClient(&redis.Options{
 				Addr:     address,
@@ -113,7 +115,7 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 		}
 		req.Header.Set("Accept", activitypubType)
 		log.Infof("%s Fetching resource at ID=%q", prefix, iri.String())
-		res, err := http.DefaultClient.Do(req)
+		res, err := c.Client.Do(req)
 		if err != nil {
 			return nil, err
 		}
@@ -319,7 +321,7 @@ func (c *Client) PostToInbox(ctx context.Context, inbox *url.URL, object vocab.T
 	} else {
 		log.Infof("%s", dump)
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := c.Client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -342,7 +344,7 @@ func (c *Client) WebfingerLookup(ctx context.Context, domain string, username st
 		return nil, err
 	}
 	log.Infof("Performing Webfinger Lookup: %q", webfingerURL.String())
-	res, err := http.DefaultClient.Get(webfingerURL.String())
+	res, err := c.Client.Get(webfingerURL.String())
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +377,7 @@ func (c *Client) LookupInstanceDetails(ctx context.Context, instanceURL *url.URL
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse instance URL: got err=%v", err)
 	}
-	res, err := http.DefaultClient.Get(detailsEndpoint.String())
+	res, err := c.Client.Get(detailsEndpoint.String())
 	if err != nil {
 		return nil, err
 	}
@@ -726,17 +728,6 @@ func (c *Client) DereferenceObjectsInOrderedCollection(ctx context.Context, coll
 	first := collection.GetActivityStreamsFirst()
 	if first == nil {
 		return nil, fmt.Errorf("%s Cannot dereference items on Collection ID=%q as first=%v", prefix, collectionID.String(), first)
-	}
-	if first.IsIRI() {
-		firstID := first.GetIRI()
-		log.Infof("%s Dereferencing ID=%q of first field of OrderedCollection ID=%q", prefix, firstID.String(), collectionID.String())
-		page, err := c.FetchRemoteObject(ctx, firstID, false, depth+1, maxDepth)
-		if err != nil {
-			return nil, fmt.Errorf("%s failed to fetch first field of OrderedCollection: got err=%v", prefix, err)
-		}
-		if err := first.SetType(page); err != nil {
-			return nil, fmt.Errorf("%s failed to set first field of OrderedCollection: got err=%v", prefix, err)
-		}
 	}
 	if first.IsIRI() {
 		firstID := first.GetIRI()

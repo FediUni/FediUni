@@ -3,6 +3,7 @@ package actor
 import (
 	"context"
 	"fmt"
+	"github.com/FediUni/FediUni/server/object"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/google/go-cmp/cmp"
@@ -11,7 +12,8 @@ import (
 )
 
 type testDatastore struct {
-	Actors map[string]vocab.ActivityStreamsPerson
+	Actors   map[string]vocab.ActivityStreamsPerson
+	Outboxes map[string]vocab.ActivityStreamsOrderedCollection
 }
 
 func newTestDatastore() *testDatastore {
@@ -58,7 +60,7 @@ func (d testDatastore) GetActorOutbox(ctx context.Context, s string, s2 string, 
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func (d testDatastore) GetActorOutboxAsOrderedCollection(ctx context.Context, s string) (vocab.ActivityStreamsOrderedCollection, error) {
+func (d testDatastore) GetActorOutboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
@@ -75,13 +77,17 @@ func (d testDatastore) UpdateActor(ctx context.Context, s string, s2 string, s3 
 }
 
 type testClient struct {
-	Actors map[string]vocab.ActivityStreamsPerson
+	Actors  map[string]vocab.ActivityStreamsPerson
+	Objects map[string]vocab.Type
 }
 
 func newTestClient() *testClient {
 	return &testClient{
 		Actors: map[string]vocab.ActivityStreamsPerson{
 			"@brandonstark@testserver.com": generateTestPerson(),
+		},
+		Objects: map[string]vocab.Type{
+			"http://testserver.com/actor/brandonstark/outbox": generateTestOutbox(),
 		},
 	}
 }
@@ -94,8 +100,12 @@ func (c testClient) FetchRemoteActor(ctx context.Context, identifier string) (Ac
 	return actor, nil
 }
 
-func (c testClient) FetchRemoteObject(ctx context.Context, u *url.URL, b bool, i int, i2 int) (vocab.Type, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (c testClient) FetchRemoteObject(ctx context.Context, objectID *url.URL, b bool, i int, i2 int) (vocab.Type, error) {
+	object := c.Objects[objectID.String()]
+	if object == nil {
+		return nil, fmt.Errorf("failed to load object ID=%q: got=%v", objectID.String(), object)
+	}
+	return object, nil
 }
 
 func (c testClient) DereferenceFollowers(ctx context.Context, property vocab.ActivityStreamsFollowersProperty, i int, i2 int) error {
@@ -107,15 +117,19 @@ func (c testClient) DereferenceFollowing(ctx context.Context, property vocab.Act
 }
 
 func (c testClient) DereferenceOutbox(ctx context.Context, property vocab.ActivityStreamsOutboxProperty, i int, i2 int) error {
-	return fmt.Errorf("unimplemented")
+	return fmt.Errorf("DereferenceOutbox(): unimplemented")
 }
 
-func (c testClient) DereferenceObjectsInOrderedCollection(ctx context.Context, collection vocab.ActivityStreamsOrderedCollection, i int, i2 int, i3 int) (vocab.ActivityStreamsOrderedCollectionPage, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (c testClient) DereferenceObjectsInOrderedCollection(ctx context.Context, collection vocab.ActivityStreamsOrderedCollection, page int, depth int, maxDepth int) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	return generateTestOutboxPageDereferenced(), nil
 }
 
-func (c testClient) DereferenceOrderedItems(ctx context.Context, property vocab.ActivityStreamsOrderedItemsProperty, i int, i2 int) error {
-	return fmt.Errorf("unimplemented")
+func (c testClient) DereferenceOrderedItems(ctx context.Context, items vocab.ActivityStreamsOrderedItemsProperty, depth int, maxDepth int) error {
+	return fmt.Errorf("DereferenceOrderedItems(): unimplemented")
+}
+
+func (c testClient) DereferenceItem(context.Context, vocab.Type, int, int) (vocab.Type, error) {
+	return nil, fmt.Errorf("DereferenceItem(): unimplemented")
 }
 
 func TestGetLocalPerson(t *testing.T) {
@@ -216,4 +230,97 @@ func TestGetAnyPerson(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetAnyOutbox(t *testing.T) {
+	tests := []struct {
+		name       string
+		identifier string
+		page       int
+		wantErr    bool
+		wantPage   vocab.ActivityStreamsOrderedCollectionPage
+	}{
+		{
+			name:       "Test get outbox of person that exists",
+			identifier: "@brandonstark@testserver.com",
+			page:       0,
+			wantPage:   generateTestOutboxPageDereferenced(),
+			wantErr:    false,
+		},
+		{
+			name:       "Test non-existent actor",
+			identifier: "@fakeactor@testserver.com",
+			page:       0,
+			wantPage:   nil,
+			wantErr:    true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := NewServer(nil, newTestDatastore(), newTestClient(), nil)
+			page, err := server.GetAnyOutbox(context.Background(), test.identifier, test.page)
+			if err != nil && !test.wantErr {
+				t.Fatalf("GetAnyOutbox() returned an unexpected error: got err=%v", err)
+			}
+			var gotPage, wantPage map[string]interface{}
+			if page != nil {
+				gotPage, err = streams.Serialize(page)
+				if err != nil && !test.wantErr {
+					t.Fatalf("Failed to Serialize Got Page: got err=%v", err)
+				}
+			}
+			if test.wantPage != nil {
+				wantPage, err = streams.Serialize(test.wantPage)
+				if err != nil && !test.wantErr {
+					t.Fatalf("Failed to Serialize Want Person: got err=%v", err)
+				}
+			}
+			if d := cmp.Diff(wantPage, gotPage); d != "" {
+				t.Errorf("GetAnyOutbox() returned an unexpected diff: (+got -want) %s", d)
+			}
+		})
+	}
+}
+
+func generateTestOutbox() vocab.ActivityStreamsOrderedCollection {
+	orderedCollection := streams.NewActivityStreamsOrderedCollection()
+	id, _ := url.Parse("http://testserver.com/actor/brandonstark/outbox")
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	orderedCollection.SetJSONLDId(idProperty)
+	firstProperty := streams.NewActivityStreamsFirstProperty()
+	firstProperty.SetActivityStreamsOrderedCollectionPage(generateTestOutboxPage())
+	orderedCollection.SetActivityStreamsFirst(firstProperty)
+	return orderedCollection
+}
+
+func generateTestOutboxPage() vocab.ActivityStreamsOrderedCollectionPage {
+	orderedCollectionPage := streams.NewActivityStreamsOrderedCollectionPage()
+	id, _ := url.Parse("http://testserver.com/actor/brandonstark/outbox?page=true")
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.SetIRI(id)
+	orderedCollectionPage.SetJSONLDId(idProperty)
+	itemsProperty := streams.NewActivityStreamsOrderedItemsProperty()
+	noteID, _ := url.Parse("http://testserver.com/actor/brandonstark/outbox/note")
+	itemsProperty.AppendIRI(noteID)
+	orderedCollectionPage.SetActivityStreamsOrderedItems(itemsProperty)
+	return orderedCollectionPage
+}
+
+func generateTestOutboxPageDereferenced() vocab.ActivityStreamsOrderedCollectionPage {
+	page := generateTestOutboxPage()
+	orderedItems := page.GetActivityStreamsOrderedItems()
+	note := generateTestNote()
+	create, _ := object.WrapInCreate(context.Background(), note, generateTestPerson())
+	create.SetJSONLDId(note.GetJSONLDId())
+	orderedItems.SetType(0, create)
+	return page
+}
+
+func generateTestNote() vocab.ActivityStreamsNote {
+	note := streams.NewActivityStreamsNote()
+	id, _ := url.Parse("http://testserver.com/actor/brandonstark/outbox/note")
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	return note
 }

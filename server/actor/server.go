@@ -48,6 +48,7 @@ type Client interface {
 	DereferenceOutbox(context.Context, vocab.ActivityStreamsOutboxProperty, int, int) error
 	DereferenceObjectsInOrderedCollection(context.Context, vocab.ActivityStreamsOrderedCollection, int, int, int) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	DereferenceOrderedItems(context.Context, vocab.ActivityStreamsOrderedItemsProperty, int, int) error
+	DereferenceItem(context.Context, vocab.Type, int, int) (vocab.Type, error)
 }
 
 // NewServer initializes a Server with methods for fetching actors and details.

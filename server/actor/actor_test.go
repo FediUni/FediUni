@@ -97,6 +97,10 @@ func generateTestPerson() vocab.ActivityStreamsPerson {
 	idProperty := streams.NewJSONLDIdProperty()
 	idProperty.Set(id)
 	p.SetJSONLDId(idProperty)
+	outboxProperty := streams.NewActivityStreamsOutboxProperty()
+	outboxID, _ := url.Parse("http://testserver.com/actor/brandonstark/outbox")
+	outboxProperty.SetIRI(outboxID)
+	p.SetActivityStreamsOutbox(outboxProperty)
 	return p
 }
 

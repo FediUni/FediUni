@@ -82,6 +82,7 @@ type Client interface {
 	DereferenceOutbox(ctx context.Context, property vocab.ActivityStreamsOutboxProperty, i int, i2 int) error
 	DereferenceObjectsInOrderedCollection(ctx context.Context, collection vocab.ActivityStreamsOrderedCollection, i int, i2 int, i3 int) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	DereferenceOrderedItems(ctx context.Context, property vocab.ActivityStreamsOrderedItemsProperty, i int, i2 int) error
+	DereferenceItem(context.Context, vocab.Type, int, int) (vocab.Type, error)
 	FetchRemotePerson(ctx context.Context, identifier string) (vocab.ActivityStreamsPerson, error)
 	DereferenceRecipientInboxes(ctx context.Context, deliver activity.Activity) ([]*url.URL, error)
 	PostToInbox(ctx context.Context, inbox *url.URL, deliver vocab.Type, id string, key *rsa.PrivateKey) error
@@ -296,8 +297,8 @@ func (s *Server) getAnyActor(w http.ResponseWriter, r *http.Request) {
 	statistics := r.URL.Query().Get("statistics")
 	a, err := s.Actor.GetAny(ctx, identifier, statistics == "true")
 	if err != nil {
-		log.Errorf("failed to serialize actor: got err=%v", err)
-		http.Error(w, "Failed to load actor", http.StatusInternalServerError)
+		log.Errorf("failed to load actor: got err=%v", err)
+		http.Error(w, "Failed to find actor", http.StatusNotFound)
 		return
 	}
 	m, err := activity.JSON(a)
@@ -702,24 +703,24 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	if username == "" {
 		log.Errorf("failed to parse Login Form: got username=%q", username)
-		http.Error(w, fmt.Sprint("failed to parse login form: invalid username"), http.StatusBadRequest)
+		http.Error(w, fmt.Sprint("Username is a required field"), http.StatusBadRequest)
 		return
 	}
 	password := r.FormValue("password")
 	if password == "" {
 		log.Errorf("failed to parse Login Form: got password=%q", password)
-		http.Error(w, fmt.Sprint("failed to parse login form: invalid password"), http.StatusBadRequest)
+		http.Error(w, fmt.Sprint("Password is a required field"), http.StatusBadRequest)
 		return
 	}
 	user, err := s.Datastore.GetUserByUsername(r.Context(), username)
 	if err != nil {
 		log.Errorf("failed to load username=%q details: got err=%v", username, err)
-		http.Error(w, fmt.Sprint("failed to load user details"), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprint("User does not exist on this instance"), http.StatusBadRequest)
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		log.Errorf("invalid password provided: got err=%v", err)
-		http.Error(w, fmt.Sprint("invalid password"), http.StatusBadRequest)
+		http.Error(w, fmt.Sprint("Password is incorrect"), http.StatusBadRequest)
 		return
 	}
 	res, err := s.generateTokenResponse(username)
