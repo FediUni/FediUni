@@ -169,7 +169,7 @@ func TestGetActor(t *testing.T) {
 	}
 	keyGenerator := actor.NewRSAKeyGenerator()
 	personGenerator := actor.NewPersonGenerator(url, keyGenerator)
-	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
+	person, _ := personGenerator.NewPerson(context.Background(), "brandonstark", "BR4ND0N")
 
 	tests := []struct {
 		name       string
@@ -244,7 +244,7 @@ func TestGetAnyActor(t *testing.T) {
 	}
 	keyGenerator := actor.NewRSAKeyGenerator()
 	personGenerator := actor.NewPersonGenerator(url, keyGenerator)
-	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
+	person, _ := personGenerator.NewPerson(context.Background(), "brandonstark", "BR4ND0N")
 
 	tests := []struct {
 		name       string
@@ -385,7 +385,7 @@ func TestWebfingerKnownAccount(t *testing.T) {
 	}
 	keyGenerator := actor.NewRSAKeyGenerator()
 	personGenerator := actor.NewPersonGenerator(url, keyGenerator)
-	person, _ := personGenerator.NewPerson("brandonstark", "BR4ND0N")
+	person, _ := personGenerator.NewPerson(context.Background(), "brandonstark", "BR4ND0N")
 
 	tests := []struct {
 		name         string

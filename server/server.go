@@ -635,6 +635,7 @@ func (s *Server) getActorOutbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	// Set MaxMemory to 8MB.
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		log.Errorf("failed to parse Registration Form: got err=%v", err)
@@ -654,7 +655,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "password is unspecified", http.StatusBadRequest)
 	}
 	generator := actor.NewPersonGenerator(s.URL, s.KeyGenerator)
-	person, err := generator.NewPerson(username, displayName)
+	person, err := generator.NewPerson(ctx, username, displayName)
 	if err != nil {
 		log.Errorf("Failed to create person, got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusInternalServerError)
@@ -672,7 +673,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusInternalServerError)
 		return
 	}
-	if err := s.Datastore.CreateUser(r.Context(), newUser); err != nil {
+	if err := s.Datastore.CreateUser(ctx, newUser); err != nil {
 		log.Errorf("Failed to create user in datastore, got err=%v", err)
 		http.Error(w, fmt.Sprintf("failed to create user"), http.StatusInternalServerError)
 		return
@@ -689,7 +690,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusOK)
 	w.Write(res)
 }
 

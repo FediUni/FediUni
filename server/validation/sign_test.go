@@ -2,6 +2,7 @@ package validation
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/FediUni/FediUni/server/actor"
@@ -28,7 +29,7 @@ func TestSignRequest(t *testing.T) {
 			testURL, _ := url.Parse("testfediuni.com")
 			keyGenerator := actor.NewRSAKeyGenerator()
 			generator := actor.NewPersonGenerator(testURL, keyGenerator)
-			person, err := generator.NewPerson("brandonstark", "8R4ND0N")
+			person, err := generator.NewPerson(context.Background(), "brandonstark", "8R4ND0N")
 			if err != nil {
 				t.Errorf("failed to load actor: got err=%v", err)
 				return

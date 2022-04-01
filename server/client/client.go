@@ -202,22 +202,11 @@ func (c *Client) FetchRemotePerson(ctx context.Context, identifier string) (voca
 
 // FetchRemotePersonWithID uses the provided ID to retrieve a Person.
 func (c *Client) FetchRemotePersonWithID(ctx context.Context, personID *url.URL) (vocab.ActivityStreamsPerson, error) {
-	actor, err := c.FetchRemoteObject(ctx, personID, false, 0, 1)
+	a, err := c.FetchRemoteObject(ctx, personID, false, 0, 1)
 	if err != nil {
 		return nil, err
 	}
-	var person vocab.ActivityStreamsPerson
-	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
-		person = p
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := resolver.Resolve(ctx, actor); err != nil {
-		return nil, err
-	}
-	return person, err
+	return actor.ParsePerson(ctx, a)
 }
 
 // FetchRemoteActor performs a Webfinger lookup and returns an Actor.

@@ -2,12 +2,17 @@ package actor
 
 import (
 	"context"
+	"encoding/pem"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/google/go-cmp/cmp"
 	"net/url"
 	"testing"
 )
+
+type testKeyGenerator interface {
+	KeyGenerator
+}
 
 func TestIsIdentifier(t *testing.T) {
 	tests := []struct {
@@ -86,6 +91,34 @@ func TestParseActor(t *testing.T) {
 			}
 			if d := cmp.Diff(wantActor, gotActor); d != "" {
 				t.Errorf("ParseActor() returned an unexpected diff: (+got -want) %s", d)
+			}
+		})
+	}
+}
+
+func TestGenerateKeyPair(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr bool
+	}{
+		{
+			name: "Test generate private and public key pair",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			keyGenerator := NewRSAKeyGenerator()
+			private, public, err := keyGenerator.GenerateKeyPair()
+			if err != nil && !test.wantErr {
+				t.Fatalf("GenerateKeyPair() returned an unexpected error: got err=%v", err)
+			}
+			privateKey, _ := pem.Decode([]byte(private))
+			if privateKey == nil {
+				t.Errorf("Failed to decode private key PEM block: got=%v", privateKey)
+			}
+			publicKey, _ := pem.Decode([]byte(public))
+			if publicKey == nil {
+				t.Errorf("Failed to decode public key PEM block: got=%v", publicKey)
 			}
 		})
 	}

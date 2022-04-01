@@ -59,57 +59,32 @@ func NewPersonGenerator(url *url.URL, keyGenerator KeyGenerator) *PersonGenerato
 	}
 }
 
-func (p *PersonGenerator) NewPerson(username, displayName string) (Person, error) {
-	person := streams.NewActivityStreamsPerson()
-	contextProperty := streams.NewActivityStreamsContextProperty()
-	activityStreamsURL, err := url.Parse("https://www.w3.org/ns/activitystreams")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse Context URL for Person: got err=%v", err)
+func (p *PersonGenerator) NewPerson(ctx context.Context, username, displayName string) (Person, error) {
+	if username == "" {
+		return nil, fmt.Errorf("failed to receive a username: got=%q", username)
 	}
-	contextProperty.AppendIRI(activityStreamsURL)
-	person.SetActivityStreamsContext(contextProperty)
-	personID := streams.NewJSONLDIdProperty()
-	id, err := url.Parse(fmt.Sprintf("%s/actor/%s", p.InstanceURL.String(), username))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse ID URL for Person: got err=%v", err)
+	serializedPerson := map[string]interface{}{
+		"@context":          "https://www.w3.org/ns/activitystreams",
+		"type":              "Person",
+		"id":                fmt.Sprintf("%s/actor/%s", p.InstanceURL.String(), username),
+		"preferredUsername": username,
+		"inbox":             fmt.Sprintf("%s/actor/%s/inbox", p.InstanceURL.String(), username),
+		"outbox":            fmt.Sprintf("%s/actor/%s/outbox", p.InstanceURL.String(), username),
+		"followers":         fmt.Sprintf("%s/actor/%s/followers", p.InstanceURL.String(), username),
+		"following":         fmt.Sprintf("%s/actor/%s/following", p.InstanceURL.String(), username),
+		"liked":             fmt.Sprintf("%s/actor/%s/liked", p.InstanceURL.String(), username),
 	}
-	personID.Set(id)
-	person.SetJSONLDId(personID)
-	inboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/inbox", p.InstanceURL.String(), username))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse Inbox URL for Person: got err=%v", err)
+	if displayName != "" {
+		serializedPerson["name"] = displayName
 	}
-	inbox := streams.NewActivityStreamsInboxProperty()
-	inbox.SetIRI(inboxURL)
-	person.SetActivityStreamsInbox(inbox)
-	outboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/outbox", p.InstanceURL.String(), username))
+	actor, err := streams.ToType(ctx, serializedPerson)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse Outbox URL for Person: got err=%v", err)
+		return nil, fmt.Errorf("failed to convert JSON: got err=%v", err)
 	}
-	outbox := streams.NewActivityStreamsOutboxProperty()
-	outbox.SetIRI(outboxURL)
-	person.SetActivityStreamsOutbox(outbox)
-	followingURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/following", p.InstanceURL.String(), username))
+	person, err := ParsePerson(ctx, actor)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse Following URL for Person: got err=%v", err)
+		return nil, fmt.Errorf("failed to parse Actor: got err=%v", err)
 	}
-	following := streams.NewActivityStreamsFollowingProperty()
-	following.SetIRI(followingURL)
-	person.SetActivityStreamsFollowing(following)
-	followersURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/followers", p.InstanceURL.String(), username))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse Followers URL for Person: got err=%v", err)
-	}
-	followers := streams.NewActivityStreamsFollowersProperty()
-	followers.SetIRI(followersURL)
-	person.SetActivityStreamsFollowers(followers)
-	likedURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/liked", p.InstanceURL.String(), username))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse Liked URL for Person: got err=%v", err)
-	}
-	liked := streams.NewActivityStreamsLikedProperty()
-	liked.SetIRI(likedURL)
-	person.SetActivityStreamsLiked(liked)
 	publicKeyProperty := streams.NewW3IDSecurityV1PublicKeyProperty()
 	publicKey, err := p.GeneratePublicKey(username)
 	if err != nil {
@@ -117,12 +92,6 @@ func (p *PersonGenerator) NewPerson(username, displayName string) (Person, error
 	}
 	publicKeyProperty.AppendW3IDSecurityV1PublicKey(publicKey)
 	person.SetW3IDSecurityV1PublicKey(publicKeyProperty)
-	preferredUsernameProperty := streams.NewActivityStreamsPreferredUsernameProperty()
-	preferredUsernameProperty.SetXMLSchemaString(strings.ToLower(username))
-	person.SetActivityStreamsPreferredUsername(preferredUsernameProperty)
-	nameProperty := streams.NewActivityStreamsNameProperty()
-	nameProperty.AppendXMLSchemaString(displayName)
-	person.SetActivityStreamsName(nameProperty)
 	return person, nil
 }
 
@@ -198,6 +167,21 @@ func IsIdentifier(identifier string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func ParsePerson(ctx context.Context, actor vocab.Type) (vocab.ActivityStreamsPerson, error) {
+	var person vocab.ActivityStreamsPerson
+	resolver, err := streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
+		person = p
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := resolver.Resolve(ctx, actor); err != nil {
+		return nil, err
+	}
+	return person, nil
 }
 
 // ParseActor parses an Actor from the ActivityPub Object provided.
