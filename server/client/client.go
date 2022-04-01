@@ -13,6 +13,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/FediUni/FediUni/server/activity"
@@ -857,6 +858,7 @@ func (c *Client) DereferenceItems(ctx context.Context, items vocab.ActivityStrea
 	sem := make(chan struct{}, limit)
 	defer close(sem)
 	var eg errgroup.Group
+	var mu sync.Mutex
 	for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
 		current := iter
 		sem <- struct{}{}
@@ -884,6 +886,8 @@ func (c *Client) DereferenceItems(ctx context.Context, items vocab.ActivityStrea
 			if err != nil {
 				return err
 			}
+			mu.Lock()
+			defer mu.Unlock()
 			if err = current.SetType(item); err != nil {
 				return fmt.Errorf("%s failed to set item: got err=%v", prefix, err)
 			}
@@ -907,6 +911,7 @@ func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.Activi
 	sem := make(chan struct{}, limit)
 	defer close(sem)
 	var eg errgroup.Group
+	var mu sync.Mutex
 	for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
 		current := iter
 		sem <- struct{}{}
@@ -937,6 +942,8 @@ func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.Activi
 				log.Errorf("Failed to receive a remote object: got=%v", item)
 				return nil
 			}
+			mu.Lock()
+			defer mu.Unlock()
 			item, err = c.DereferenceItem(ctx, item, depth+1, maxDepth)
 			if err != nil {
 				return err
