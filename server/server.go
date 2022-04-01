@@ -695,7 +695,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	// Set MaxMemory to 8MB.
+	// Set MaxMemory to 8 MB.
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		log.Errorf("failed to parse Login Form: got err=%v", err)
 		http.Error(w, fmt.Sprint("failed to parse login form"), http.StatusBadRequest)

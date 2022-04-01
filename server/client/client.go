@@ -228,7 +228,7 @@ func (c *Client) FetchRemoteActor(ctx context.Context, identifier string) (actor
 }
 
 // FetchFollowers determines the actors that follow a given person.
-func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab.ActivityStreamsPerson, error) {
+func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab.Type, error) {
 	person, err := c.FetchRemotePerson(ctx, identifier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch remote person=%q: got err=%v", identifier, err)
@@ -254,30 +254,19 @@ func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab
 	if err := resolver.Resolve(ctx, followers); err != nil {
 		return nil, err
 	}
-	var dereferencedFollowers []vocab.ActivityStreamsPerson
-	resolver, err = streams.NewTypeResolver(func(ctx context.Context, p vocab.ActivityStreamsPerson) error {
-		dereferencedFollowers = append(dereferencedFollowers, p)
-		return nil
-	})
+	var dereferencedFollowers []vocab.Type
 	if err != nil {
 		return nil, fmt.Errorf("failed to create person resolver: got err=%v", err)
 	}
+	if err := c.DereferenceOrderedItems(ctx, orderedCollection.GetActivityStreamsOrderedItems(), 0, 1); err != nil {
+		return nil, fmt.Errorf("failed to dereference followers of Actor Identifier=%q: got err=%v", identifier, err)
+	}
 	for iter := orderedCollection.GetActivityStreamsOrderedItems().Begin(); iter != nil; iter = iter.Next() {
 		switch {
-		case iter.IsIRI():
-			o, err := c.FetchRemoteObject(ctx, iter.GetIRI(), false, 0, 1)
-			if err != nil {
-				log.Errorf("failed to fetch remote object: got err=%v", err)
-				continue
-			}
-			if err := resolver.Resolve(ctx, o); err != nil {
-				log.Errorf("failed to resolve remote object: got err=%v", err)
-				continue
-			}
-		case iter.IsActivityStreamsPerson():
-			dereferencedFollowers = append(dereferencedFollowers, iter.GetActivityStreamsPerson())
+		case iter.HasAny():
+			dereferencedFollowers = append(dereferencedFollowers, iter.GetType())
 		default:
-			log.Infof("Ignoring follower of type=%q", iter.GetType())
+			log.Infof("Failed to receive follower: got iter=%v", iter)
 		}
 	}
 	log.Infof("Loaded %d followers from %q", len(dereferencedFollowers), identifier)
