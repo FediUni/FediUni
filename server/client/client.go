@@ -857,83 +857,35 @@ func (c *Client) DereferenceItems(ctx context.Context, items vocab.ActivityStrea
 	itemsDereferenced := 0
 	sem := make(chan struct{}, limit)
 	defer close(sem)
+	dereferencedItems := make([]vocab.Type, limit)
 	var eg errgroup.Group
-	var mu sync.Mutex
+	mu := &sync.Mutex{}
+	i := -1
 	for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
-		current := iter
-		sem <- struct{}{}
-		eg.Go(func() error {
-			defer func() {
-				<-sem
-			}()
-			var item vocab.Type
-			switch {
-			case current.IsIRI():
-				itemID := current.GetIRI()
-				log.Infof("%s Dereferencing Item ID = %q", prefix, itemID.String())
-				o, err := c.FetchRemoteObject(ctx, itemID, false, depth+1, maxDepth)
-				if err != nil {
-					return fmt.Errorf("%s Failed to fetch object ID=%q", prefix, current.GetIRI().String())
-				}
-				item = o
-			default:
-				item = current.GetType()
-			}
-			if item == nil {
-				return nil
-			}
-			item, err := c.DereferenceItem(ctx, item, depth, maxDepth)
+		i++
+		index := i
+		var itemID *url.URL
+		var err error
+		switch {
+		case iter.IsIRI():
+			itemID = iter.GetIRI()
+		case iter.HasAny():
+			itemID, err = pub.GetId(iter.GetType())
 			if err != nil {
 				return err
 			}
-			mu.Lock()
-			defer mu.Unlock()
-			if err = current.SetType(item); err != nil {
-				return fmt.Errorf("%s failed to set item: got err=%v", prefix, err)
-			}
-			itemsDereferenced++
+		default:
+			log.Infof("%s Unexpected item: got=%v", prefix, iter)
+		}
+		if itemID == nil {
 			return nil
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		log.Errorf("%s Failed to dereference item: got err=%v", prefix, err)
-	}
-	log.Infof("%s Dereferenced %d items", prefix, itemsDereferenced)
-	return nil
-}
-
-// DereferenceOrderedItems fetches and dereferences objects in orderedItems.
-// This is performed concurrently up to some limit.
-func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.ActivityStreamsOrderedItemsProperty, depth int, maxDepth int) error {
-	prefix := fmt.Sprintf("(Depth=%d)", depth)
-	itemsDereferenced := 0
-	sem := make(chan struct{}, limit)
-	defer close(sem)
-	var eg errgroup.Group
-	var mu sync.Mutex
-	for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
-		current := iter
-		sem <- struct{}{}
+		}
+		log.Infof("%s Dereferencing Item ID=%q", prefix, itemID.String())
 		eg.Go(func() error {
 			defer func() {
 				<-sem
 			}()
-			var itemID *url.URL
-			var err error
-			switch {
-			case current.IsIRI():
-				itemID = current.GetIRI()
-			default:
-				itemID, err = pub.GetId(current.GetType())
-				if err != nil {
-					return err
-				}
-			}
-			if itemID == nil {
-				return nil
-			}
-			log.Infof("%s Dereferencing Item ID=%q", prefix, itemID.String())
+			sem <- struct{}{}
 			item, err := c.FetchRemoteObject(ctx, itemID, false, depth+1, maxDepth)
 			if err != nil {
 				return fmt.Errorf("%s Failed to fetch object ID=%q", prefix, itemID.String())
@@ -948,15 +900,91 @@ func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.Activi
 			if err != nil {
 				return err
 			}
-			if err = current.SetType(item); err != nil {
-				return fmt.Errorf("%s failed to set item: got err=%v", prefix, err)
-			}
+			dereferencedItems[index] = item
 			itemsDereferenced++
 			return nil
 		})
 	}
 	if err := eg.Wait(); err != nil {
 		log.Errorf("%s Failed to dereference item: got err=%v", prefix, err)
+	}
+	for i, item := range dereferencedItems {
+		if item == nil {
+			continue
+		}
+		if err := items.SetType(i, item); err != nil {
+			return fmt.Errorf("%s Failed to set item on index=%v", prefix, i)
+		}
+	}
+	log.Infof("%s Dereferenced %d items", prefix, itemsDereferenced)
+	return nil
+}
+
+// DereferenceOrderedItems fetches and dereferences objects in orderedItems.
+// This is performed concurrently up to some limit.
+func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.ActivityStreamsOrderedItemsProperty, depth int, maxDepth int) error {
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
+	itemsDereferenced := 0
+	sem := make(chan struct{}, limit)
+	defer close(sem)
+	dereferencedItems := make([]vocab.Type, limit)
+	var eg errgroup.Group
+	mu := &sync.Mutex{}
+	i := -1
+	for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+		i++
+		index := i
+		var itemID *url.URL
+		var err error
+		switch {
+		case iter.IsIRI():
+			itemID = iter.GetIRI()
+		case iter.HasAny():
+			itemID, err = pub.GetId(iter.GetType())
+			if err != nil {
+				return err
+			}
+		default:
+			log.Infof("%s Unexpected item: got=%v", prefix, iter)
+		}
+		if itemID == nil {
+			return nil
+		}
+		log.Infof("%s Dereferencing Item ID=%q", prefix, itemID.String())
+		eg.Go(func() error {
+			defer func() {
+				<-sem
+			}()
+			sem <- struct{}{}
+			item, err := c.FetchRemoteObject(ctx, itemID, false, depth+1, maxDepth)
+			if err != nil {
+				return fmt.Errorf("%s Failed to fetch object ID=%q", prefix, itemID.String())
+			}
+			if item == nil {
+				log.Errorf("Failed to receive a remote object: got=%v", item)
+				return nil
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			item, err = c.DereferenceItem(ctx, item, depth+1, maxDepth)
+			if err != nil {
+				return err
+			}
+			dereferencedItems[index] = item
+			itemsDereferenced++
+			return nil
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		log.Errorf("%s Failed to dereference item: got err=%v", prefix, err)
+	}
+	for i, item := range dereferencedItems {
+		if item == nil {
+			continue
+		}
+		if err := items.SetType(i, item); err != nil {
+			return fmt.Errorf("%s Failed to set item on index=%v", prefix, i)
+		}
 	}
 	log.Infof("%s Dereferenced %d items", prefix, itemsDereferenced)
 	return nil
