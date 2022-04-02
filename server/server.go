@@ -983,7 +983,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 	}
 	rawObject, err := streams.ToType(ctx, m)
 	if err != nil {
-		log.Errorf("failed to convert JSON to activitypub type: got err=%v", err)
+		log.Errorf("failed to convert JSON to ActivityPub type: got err=%v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -1082,6 +1082,11 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		toDeliver = like
 	case "Note":
 		note, err := object.ParseNote(ctx, rawObject)
+		if err != nil {
+			log.Errorf("Failed to parse Note: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Note"), http.StatusBadRequest)
+			return
+		}
 		noteID, err := url.Parse(fmt.Sprintf("%s/object", id.String()))
 		if err != nil {
 			log.Errorf("Failed to create Note ID: got err=%v", err)
@@ -1091,11 +1096,6 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		noteIDProperty := streams.NewJSONLDIdProperty()
 		noteIDProperty.Set(noteID)
 		note.SetJSONLDId(noteIDProperty)
-		if err != nil {
-			log.Errorf("Failed to parse Note Object: got err=%v", err)
-			http.Error(w, fmt.Sprintf("Failed to send Note"), http.StatusBadRequest)
-			return
-		}
 		for iter := note.GetActivityStreamsAttributedTo().Begin(); iter != nil; iter = iter.Next() {
 			if !iter.IsIRI() {
 				continue
@@ -1106,6 +1106,11 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		create, err := object.WrapInCreate(ctx, note, person)
+		if err != nil {
+			log.Errorf("Failed to wrap Note in Create Activity: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Note"), http.StatusBadRequest)
+			return
+		}
 		create.SetJSONLDId(idProperty)
 		if inReplyToProperty := note.GetActivityStreamsInReplyTo(); inReplyToProperty != nil {
 			for iter := inReplyToProperty.Begin(); iter != inReplyToProperty.End(); iter = iter.Next() {
@@ -1116,6 +1121,53 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		for iter := note.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
+			if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
+				isPublic = true
+				break
+			}
+		}
+		toDeliver = create
+	case "Event":
+		event, err := object.ParseEvent(ctx, rawObject)
+		if err != nil {
+			log.Errorf("Failed to parse Event: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Event"), http.StatusBadRequest)
+			return
+		}
+		eventID, err := url.Parse(fmt.Sprintf("%s/object", id.String()))
+		if err != nil {
+			log.Errorf("Failed to create Event ID: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Event"), http.StatusBadRequest)
+			return
+		}
+		eventIDProperty := streams.NewJSONLDIdProperty()
+		eventIDProperty.Set(eventID)
+		event.SetJSONLDId(eventIDProperty)
+		for iter := event.GetActivityStreamsAttributedTo().Begin(); iter != nil; iter = iter.Next() {
+			if !iter.IsIRI() {
+				continue
+			}
+			if iter.GetIRI().String() != userID {
+				http.Error(w, fmt.Sprintf("attributedTo mismatch in Event"), http.StatusUnauthorized)
+				return
+			}
+		}
+		create, err := object.WrapInCreate(ctx, event, person)
+		if err != nil {
+			log.Errorf("Failed to wrap Event in Create Activity: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Event"), http.StatusBadRequest)
+			return
+		}
+		create.SetJSONLDId(idProperty)
+		if inReplyToProperty := event.GetActivityStreamsInReplyTo(); inReplyToProperty != nil {
+			for iter := inReplyToProperty.Begin(); iter != inReplyToProperty.End(); iter = iter.Next() {
+				if iter.IsIRI() && iter.GetIRI() != nil {
+					isReply = true
+					break
+				}
+			}
+		}
+		for iter := event.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
 			if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
 				isPublic = true
 				break

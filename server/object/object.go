@@ -45,6 +45,21 @@ func ParseNote(ctx context.Context, object vocab.Type) (vocab.ActivityStreamsNot
 	return note, nil
 }
 
+func ParseEvent(ctx context.Context, object vocab.Type) (vocab.ActivityStreamsEvent, error) {
+	var event vocab.ActivityStreamsEvent
+	eventResolver, err := streams.NewTypeResolver(func(ctx context.Context, e vocab.ActivityStreamsEvent) error {
+		event = e
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := eventResolver.Resolve(ctx, object); err != nil {
+		return nil, err
+	}
+	return event, nil
+}
+
 func ParseOrderedCollection(ctx context.Context, object vocab.Type) (vocab.ActivityStreamsOrderedCollection, error) {
 	var orderedCollection vocab.ActivityStreamsOrderedCollection
 	orderedCollectionResolver, err := streams.NewTypeResolver(func(ctx context.Context, o vocab.ActivityStreamsOrderedCollection) error {
