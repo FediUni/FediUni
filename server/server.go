@@ -1511,7 +1511,7 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 		case iter.IsActivityStreamsNote():
 			note := iter.GetActivityStreamsNote()
 			content := note.GetActivityStreamsContent()
-			for c := content.Begin(); c != nil; c = c.Next() {
+			for c := content.Begin(); c != content.End(); c = c.Next() {
 				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
 			}
 			if inReplyToProperty := note.GetActivityStreamsInReplyTo(); inReplyToProperty != nil {
@@ -1521,6 +1521,12 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 						break
 					}
 				}
+			}
+		case iter.IsActivityStreamsEvent():
+			event := iter.GetActivityStreamsEvent()
+			content := event.GetActivityStreamsContent()
+			for c := content.Begin(); c != content.End(); c = c.Next() {
+				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
 			}
 		default:
 			return fmt.Errorf("non-note activity presented")
