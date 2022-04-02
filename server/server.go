@@ -91,6 +91,7 @@ type Client interface {
 	FetchRecipients(context.Context, activity.Activity) ([]*url.URL, error)
 	Create(ctx context.Context, create vocab.ActivityStreamsCreate, i int, i2 int) error
 	Announce(ctx context.Context, announce vocab.ActivityStreamsAnnounce, i int, i2 int) error
+	Invite(context.Context, vocab.ActivityStreamsInvite, int, int) error
 }
 
 type Server struct {
@@ -1317,6 +1318,11 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to delete object"), http.StatusInternalServerError)
 			return
 		}
+	case "Invite":
+		if err := s.handleInvite(ctx, activityRequest, username); err != nil {
+			log.Errorf("Failed to invite actor: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to handle Invite"), http.StatusInternalServerError)
+		}
 	case "Like":
 		if err := s.like(ctx, activityRequest); err != nil {
 			log.Errorf("Failed to like specified object: got err=%v", err)
@@ -1525,12 +1531,6 @@ func (s *Server) handleCreateRequest(ctx context.Context, activityRequest vocab.
 						break
 					}
 				}
-			}
-		case iter.IsActivityStreamsEvent():
-			event := iter.GetActivityStreamsEvent()
-			content := event.GetActivityStreamsContent()
-			for c := content.Begin(); c != content.End(); c = c.Next() {
-				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
 			}
 		default:
 			return fmt.Errorf("non-note activity presented")
@@ -1776,6 +1776,34 @@ func (s *Server) delete(ctx context.Context, activityRequest vocab.Type) error {
 // See: https://www.w3.org/TR/activitypub/#update-activity-inbox
 func (s *Server) update(ctx context.Context, activityRequest vocab.Type) error {
 	return fmt.Errorf("support for updating activities and objects is unimplemented")
+}
+
+func (s *Server) handleInvite(ctx context.Context, activityRequest vocab.Type, username string) error {
+	log.Infoln("Received Invite Activity")
+	invite, err := activity.ParseInviteActivity(ctx, activityRequest)
+	if err != nil {
+		return err
+	}
+	if err := s.Client.Invite(ctx, invite, 0, 2); err != nil {
+		return fmt.Errorf("failed to dereference Invite Activity: got err=%v", err)
+	}
+	var inReplyTo *url.URL
+	for iter := invite.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
+		switch {
+		case iter.IsActivityStreamsEvent():
+			event := iter.GetActivityStreamsEvent()
+			content := event.GetActivityStreamsContent()
+			for c := content.Begin(); c != content.End(); c = c.Next() {
+				c.SetXMLSchemaString(s.Policy.Sanitize(c.GetXMLSchemaString()))
+			}
+		default:
+			return fmt.Errorf("non-event activity presented")
+		}
+	}
+	if err := s.Datastore.AddActivityToActorInbox(ctx, activityRequest, username, inReplyTo); err != nil {
+		return fmt.Errorf("failed to add to actor inbox: got err=%v", err)
+	}
+	return nil
 }
 
 // Like can only like activities and objects owned by the server.

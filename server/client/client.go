@@ -520,6 +520,40 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 	return nil
 }
 
+// Invite dereferences the actor and object fields of the activity.
+func (c *Client) Invite(ctx context.Context, invite vocab.ActivityStreamsInvite, depth int, maxDepth int) error {
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
+	if depth > maxDepth {
+		log.Infof("%s Skipping dereferencing Invite Activity ID=%q", prefix, invite.GetJSONLDId().Get())
+		return nil
+	}
+	if err := c.DereferenceActor(ctx, invite.GetActivityStreamsActor(), depth, maxDepth); err != nil {
+		log.Errorf("%s Failed to dereference actors: got err=%v", prefix, err)
+	}
+	for iter := invite.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
+		if !iter.IsIRI() {
+			continue
+		}
+		objectID := iter.GetIRI()
+		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false, depth+1, maxDepth)
+		if err != nil {
+			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
+		}
+		switch objectRetrieved.GetTypeName() {
+		case "Event":
+			event, err := object.ParseEvent(ctx, objectRetrieved)
+			if err != nil {
+				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", objectID.String(), err)
+			}
+			if err := c.Event(ctx, event, depth+1, maxDepth); err != nil {
+				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", objectID.String(), err)
+			}
+			iter.SetActivityStreamsEvent(event)
+		}
+	}
+	return nil
+}
+
 // Note dereferences the fields up to the specified maxDepth on a Note.
 // Dereferences "attributedTo" and "replies". The first and second page of the
 // replies are dereferenced by default.
@@ -582,6 +616,31 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 	log.Infof("Handling second page of replies to Note ID=%q", noteID.String())
 	if _, err := c.DereferenceObjectsInCollection(ctx, collection, 1, depth+1, maxDepth); err != nil {
 		log.Errorf("Failed to dereference replies to Note ID=%q: got err=%v", noteID.String(), err)
+	}
+	return nil
+}
+
+// Event dereferences the fields up to the specified maxDepth on an Event.
+// Dereferences "attributedTo" actors and objects.
+func (c *Client) Event(ctx context.Context, event vocab.ActivityStreamsEvent, depth int, maxDepth int) error {
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
+	if event == nil {
+		return fmt.Errorf("error in dereferencing event: got event=%v", event)
+	}
+	eventIDProperty := event.GetJSONLDId()
+	if eventIDProperty == nil {
+		return fmt.Errorf("%s failed to dereference Event: got Event ID Property=%v", prefix, eventIDProperty)
+	}
+	eventID := eventIDProperty.Get()
+	if eventID == nil {
+		return fmt.Errorf("%s failed to dereference Event: got Event ID=%v", prefix, eventID)
+	}
+	if depth > maxDepth {
+		log.Infof("%s Skipping dereferencing Event Object ID=%q", prefix, eventID.String())
+		return nil
+	}
+	if err := c.DereferenceAttributedTo(ctx, event.GetActivityStreamsAttributedTo(), depth, maxDepth); err != nil {
+		log.Errorf("%s failed to dereference AttributedTo on Event ID=%q: got err=%v", prefix, eventID.String(), err)
 	}
 	return nil
 }
