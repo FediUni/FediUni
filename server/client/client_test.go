@@ -443,6 +443,64 @@ func TestDereferenceObjectsInCollection(t *testing.T) {
 				"next": "https://non-existent-site.com/object/fake-collection-page-2",
 			},
 		},
+		{
+			name: "Test dereference items with Note",
+			page: 1,
+			key: []string{
+				"https://non-existent-site.com/object/fake-collection",
+				"https://non-existent-site.com/object/fake-collection-page-1",
+				"https://non-existent-site.com/object/fake-collection-page-2",
+				"https://non-existent-site.com/actor/fake-actor",
+				"https://non-existent-site.com/object/fake-note",
+			},
+			value: []map[string]interface{}{
+				{
+					"@context": "https://www.w3.org/ns/activitystreams",
+					"id":       "https://non-existent-site.com/object/fake-collection",
+					"type":     "Collection",
+					"first":    "https://non-existent-site.com/object/fake-collection-page-1",
+				},
+				{
+					"@context": "https://www.w3.org/ns/activitystreams",
+					"id":       "https://non-existent-site.com/object/fake-collection-page-1",
+					"type":     "CollectionPage",
+					"items":    "https://non-existent-site.com/object/fake-note",
+					"next":     "https://non-existent-site.com/object/fake-collection-page-2",
+				},
+				{
+					"@context": "https://www.w3.org/ns/activitystreams",
+					"id":       "https://non-existent-site.com/object/fake-collection-page-2",
+					"type":     "CollectionPage",
+					"items":    "https://non-existent-site.com/object/fake-note",
+					"next":     "https://non-existent-site.com/object/fake-collection-page-3",
+				},
+				{
+					"@context": "https://www.w3.org/ns/activitystreams",
+					"id":       "https://non-existent-site.com/actor/fake-actor",
+					"type":     "Person",
+				},
+				{
+					"@context":     "https://www.w3.org/ns/activitystreams",
+					"id":           "https://non-existent-site.com/object/fake-note",
+					"type":         "Note",
+					"attributedTo": "https://non-existent-site.com/actor/fake-actor",
+				},
+			},
+			want: map[string]interface{}{
+				"@context": "https://www.w3.org/ns/activitystreams",
+				"id":       "https://non-existent-site.com/object/fake-collection-page-2",
+				"type":     "CollectionPage",
+				"items": map[string]interface{}{
+					"id":   "https://non-existent-site.com/object/fake-note",
+					"type": "Note",
+					"attributedTo": map[string]interface{}{
+						"id":   "https://non-existent-site.com/actor/fake-actor",
+						"type": "Person",
+					},
+				},
+				"next": "https://non-existent-site.com/object/fake-collection-page-3",
+			},
+		},
 	}
 	for _, test := range tests {
 		marshalledCollection, err := json.Marshal(test.value[0])
