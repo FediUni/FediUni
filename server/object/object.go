@@ -112,3 +112,26 @@ func WrapInCreate(ctx context.Context, object Object, actor vocab.Type) (vocab.A
 	create.SetActivityStreamsCc(object.GetActivityStreamsCc())
 	return create, nil
 }
+
+// WrapInInvite accepts an event and wraps the event in an Invite activity.
+// WrapInInvite does not handle ID assignment or determining targets.
+func WrapInInvite(event vocab.ActivityStreamsEvent, actor vocab.Type) (vocab.ActivityStreamsInvite, error) {
+	if actor == nil {
+		return nil, fmt.Errorf("failed to receive actor: got=%v", actor)
+	}
+	invite := streams.NewActivityStreamsInvite()
+	o := streams.NewActivityStreamsObjectProperty()
+	invite.SetActivityStreamsObject(o)
+	if err := o.AppendType(event); err != nil {
+		return nil, err
+	}
+	actorProperty := streams.NewActivityStreamsActorProperty()
+	invite.SetActivityStreamsActor(actorProperty)
+	if err := actorProperty.AppendType(actor); err != nil {
+		return nil, err
+	}
+	invite.SetActivityStreamsPublished(event.GetActivityStreamsPublished())
+	invite.SetActivityStreamsTo(event.GetActivityStreamsTo())
+	invite.SetActivityStreamsCc(event.GetActivityStreamsCc())
+	return invite, nil
+}

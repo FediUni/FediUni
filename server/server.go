@@ -88,6 +88,7 @@ type Client interface {
 	PostToInbox(ctx context.Context, inbox *url.URL, deliver vocab.Type, id string, key *rsa.PrivateKey) error
 	LookupInstanceDetails(ctx context.Context, id *url.URL) (*client.InstanceDetails, error)
 	ResolveActorIdentifierToID(ctx context.Context, otherUser string) (*url.URL, error)
+	FetchRecipients(context.Context, activity.Activity) ([]*url.URL, error)
 	Create(ctx context.Context, create vocab.ActivityStreamsCreate, i int, i2 int) error
 	Announce(ctx context.Context, announce vocab.ActivityStreamsAnnounce, i int, i2 int) error
 }
@@ -1152,28 +1153,31 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		create, err := object.WrapInCreate(ctx, event, person)
+		invite, err := object.WrapInInvite(event, person)
 		if err != nil {
-			log.Errorf("Failed to wrap Event in Create Activity: got err=%v", err)
+			log.Errorf("Failed to wrap Event in Invite Activity: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to send Event"), http.StatusBadRequest)
 			return
 		}
-		create.SetJSONLDId(idProperty)
-		if inReplyToProperty := event.GetActivityStreamsInReplyTo(); inReplyToProperty != nil {
-			for iter := inReplyToProperty.Begin(); iter != inReplyToProperty.End(); iter = iter.Next() {
-				if iter.IsIRI() && iter.GetIRI() != nil {
-					isReply = true
-					break
-				}
-			}
-		}
+		invite.SetJSONLDId(idProperty)
 		for iter := event.GetActivityStreamsTo().Begin(); iter != nil; iter = iter.Next() {
 			if iter.GetIRI().String() == "https://www.w3.org/ns/activitystreams#Public" {
 				isPublic = true
 				break
 			}
 		}
-		toDeliver = create
+		recipients, err := s.Client.FetchRecipients(ctx, invite)
+		if err != nil {
+			log.Errorf("Failed to determine Targets in Invite: got err=%v", err)
+			http.Error(w, fmt.Sprintf("Failed to send Event"), http.StatusBadRequest)
+			return
+		}
+		target := streams.NewActivityStreamsTargetProperty()
+		for _, recipient := range recipients {
+			target.AppendIRI(recipient)
+		}
+		invite.SetActivityStreamsTarget(target)
+		toDeliver = invite
 	case "Image":
 		http.Error(w, fmt.Sprintf("support for Image is unimplemented"), http.StatusNotImplemented)
 		return
@@ -1193,7 +1197,7 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 	}
 	inboxes, err := s.Client.DereferenceRecipientInboxes(ctx, toDeliver)
 	// Post to own inbox to allow user to view their own activities.
-	if rawObject.GetTypeName() == "Note" {
+	if rawObject.GetTypeName() == "Note" || rawObject.GetTypeName() == "Event" {
 		inboxes = append(inboxes, person.GetActivityStreamsInbox().GetIRI())
 	}
 	privateKey, err := s.readPrivateKey(username)

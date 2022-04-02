@@ -1031,6 +1031,160 @@ func (c *Client) DereferenceItem(ctx context.Context, item vocab.Type, depth int
 	}
 }
 
+// FetchRecipients returns a list of Actor IDs to deliver the activity to.
+func (c *Client) FetchRecipients(ctx context.Context, a activity.Activity) ([]*url.URL, error) {
+	var recipients []*url.URL
+	if to := a.GetActivityStreamsTo(); to != nil {
+		for iter := to.Begin(); iter != to.End(); iter = iter.Next() {
+			var o vocab.Type
+			var err error
+			if iter.IsIRI() {
+				o, err = c.FetchRemoteObject(ctx, iter.GetIRI(), true, 0, 1)
+				if err != nil {
+					log.Errorf("Failed to fetch remote Object: got err=%v", err)
+					continue
+				}
+				if o == nil {
+					log.Errorf("Failed to fetch Object: got=%v", o)
+					continue
+				}
+			}
+			switch {
+			case o.GetTypeName() == "OrderedCollection":
+				orderedCollection, err := object.ParseOrderedCollection(ctx, o)
+				if err != nil {
+					log.Errorf("failed to fetch remote OrderedCollection: got err=%v", err)
+					continue
+				}
+				items := orderedCollection.GetActivityStreamsOrderedItems()
+				if items == nil {
+					log.Errorf("failed to receive orderedItems: got=%v", items)
+					continue
+				}
+				for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+					switch {
+					case iter.IsIRI():
+						recipients = append(recipients, iter.GetIRI())
+					case iter.HasAny():
+						id, err := pub.GetId(iter.GetType())
+						if err != nil {
+							log.Errorf("failed to receive an ID: got err=%v", err)
+							continue
+						}
+						recipients = append(recipients, id)
+					}
+				}
+			case o.GetTypeName() == "Collection":
+				collection, err := object.ParseCollection(ctx, o)
+				if err != nil {
+					log.Errorf("failed to fetch remote OrderedCollection: got err=%v", err)
+					continue
+				}
+				items := collection.GetActivityStreamsItems()
+				if items == nil {
+					log.Errorf("failed to receive orderedItems: got=%v", items)
+					continue
+				}
+				for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+					switch {
+					case iter.IsIRI():
+						recipients = append(recipients, iter.GetIRI())
+					case iter.HasAny():
+						id, err := pub.GetId(iter.GetType())
+						if err != nil {
+							log.Errorf("failed to receive an ID: got err=%v", err)
+							continue
+						}
+						recipients = append(recipients, id)
+					}
+				}
+			default:
+				id, err := pub.GetId(iter.GetType())
+				if err != nil {
+					log.Errorf("failed to receive an ID: got err=%v", err)
+					continue
+				}
+				recipients = append(recipients, id)
+			}
+		}
+	}
+	if cc := a.GetActivityStreamsCc(); cc != nil {
+		for iter := cc.Begin(); iter != cc.End(); iter = iter.Next() {
+			var o vocab.Type
+			var err error
+			if iter.IsIRI() {
+				o, err = c.FetchRemoteObject(ctx, iter.GetIRI(), true, 0, 1)
+				if err != nil {
+					log.Errorf("Failed to fetch remote Object: got err=%v", err)
+					continue
+				}
+				if o == nil {
+					log.Errorf("Failed to fetch Object: got=%v", o)
+					continue
+				}
+			}
+			switch {
+			case o.GetTypeName() == "OrderedCollection":
+				orderedCollection, err := object.ParseOrderedCollection(ctx, o)
+				if err != nil {
+					log.Errorf("failed to fetch remote OrderedCollection: got err=%v", err)
+					continue
+				}
+				items := orderedCollection.GetActivityStreamsOrderedItems()
+				if items == nil {
+					log.Errorf("failed to receive orderedItems: got=%v", items)
+					continue
+				}
+				for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+					switch {
+					case iter.IsIRI():
+						recipients = append(recipients, iter.GetIRI())
+					case iter.HasAny():
+						id, err := pub.GetId(iter.GetType())
+						if err != nil {
+							log.Errorf("failed to receive an ID: got err=%v", err)
+							continue
+						}
+						recipients = append(recipients, id)
+					}
+				}
+			case o.GetTypeName() == "Collection":
+				collection, err := object.ParseCollection(ctx, o)
+				if err != nil {
+					log.Errorf("failed to fetch remote OrderedCollection: got err=%v", err)
+					continue
+				}
+				items := collection.GetActivityStreamsItems()
+				if items == nil {
+					log.Errorf("failed to receive orderedItems: got=%v", items)
+					continue
+				}
+				for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+					switch {
+					case iter.IsIRI():
+						recipients = append(recipients, iter.GetIRI())
+					case iter.HasAny():
+						id, err := pub.GetId(iter.GetType())
+						if err != nil {
+							log.Errorf("failed to receive an ID: got err=%v", err)
+							continue
+						}
+						recipients = append(recipients, id)
+					}
+				}
+			default:
+				id, err := pub.GetId(iter.GetType())
+				if err != nil {
+					log.Errorf("failed to receive an ID: got err=%v", err)
+					continue
+				}
+				recipients = append(recipients, id)
+			}
+		}
+	}
+	return recipients, nil
+}
+
 func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Activity) ([]*url.URL, error) {
 	var inboxes []*url.URL
 	to := a.GetActivityStreamsTo()
