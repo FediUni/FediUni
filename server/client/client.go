@@ -94,7 +94,7 @@ func NewClient(instance *url.URL, address string, password string) *Client {
 }
 
 // FetchRemoteObject retrieves the resource located at the provided IRI.
-// The client makes use of caching but this can be overriden.
+// The client makes use of caching but this can be overridden.
 func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdate bool, depth int, maxDepth int) (vocab.Type, error) {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if iri == nil {
