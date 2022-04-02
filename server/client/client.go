@@ -520,6 +520,40 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 	return nil
 }
 
+// Invite dereferences the actor and object fields of the activity.
+func (c *Client) Invite(ctx context.Context, invite vocab.ActivityStreamsInvite, depth int, maxDepth int) error {
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
+	if depth > maxDepth {
+		log.Infof("%s Skipping dereferencing Invite Activity ID=%q", prefix, invite.GetJSONLDId().Get())
+		return nil
+	}
+	if err := c.DereferenceActor(ctx, invite.GetActivityStreamsActor(), depth, maxDepth); err != nil {
+		log.Errorf("%s Failed to dereference actors: got err=%v", prefix, err)
+	}
+	for iter := invite.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
+		if !iter.IsIRI() {
+			continue
+		}
+		objectID := iter.GetIRI()
+		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false, depth+1, maxDepth)
+		if err != nil {
+			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
+		}
+		switch objectRetrieved.GetTypeName() {
+		case "Event":
+			event, err := object.ParseEvent(ctx, objectRetrieved)
+			if err != nil {
+				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", objectID.String(), err)
+			}
+			if err := c.Event(ctx, event, depth+1, maxDepth); err != nil {
+				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", objectID.String(), err)
+			}
+			iter.SetActivityStreamsEvent(event)
+		}
+	}
+	return nil
+}
+
 // Note dereferences the fields up to the specified maxDepth on a Note.
 // Dereferences "attributedTo" and "replies". The first and second page of the
 // replies are dereferenced by default.
@@ -582,6 +616,31 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 	log.Infof("Handling second page of replies to Note ID=%q", noteID.String())
 	if _, err := c.DereferenceObjectsInCollection(ctx, collection, 1, depth+1, maxDepth); err != nil {
 		log.Errorf("Failed to dereference replies to Note ID=%q: got err=%v", noteID.String(), err)
+	}
+	return nil
+}
+
+// Event dereferences the fields up to the specified maxDepth on an Event.
+// Dereferences "attributedTo" actors and objects.
+func (c *Client) Event(ctx context.Context, event vocab.ActivityStreamsEvent, depth int, maxDepth int) error {
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
+	if event == nil {
+		return fmt.Errorf("error in dereferencing event: got event=%v", event)
+	}
+	eventIDProperty := event.GetJSONLDId()
+	if eventIDProperty == nil {
+		return fmt.Errorf("%s failed to dereference Event: got Event ID Property=%v", prefix, eventIDProperty)
+	}
+	eventID := eventIDProperty.Get()
+	if eventID == nil {
+		return fmt.Errorf("%s failed to dereference Event: got Event ID=%v", prefix, eventID)
+	}
+	if depth > maxDepth {
+		log.Infof("%s Skipping dereferencing Event Object ID=%q", prefix, eventID.String())
+		return nil
+	}
+	if err := c.DereferenceAttributedTo(ctx, event.GetActivityStreamsAttributedTo(), depth, maxDepth); err != nil {
+		log.Errorf("%s failed to dereference AttributedTo on Event ID=%q: got err=%v", prefix, eventID.String(), err)
 	}
 	return nil
 }
@@ -1029,6 +1088,160 @@ func (c *Client) DereferenceItem(ctx context.Context, item vocab.Type, depth int
 	default:
 		return nil, fmt.Errorf("failed to dereference unknown Item type")
 	}
+}
+
+// FetchRecipients returns a list of Actor IDs to deliver the activity to.
+func (c *Client) FetchRecipients(ctx context.Context, a activity.Activity) ([]*url.URL, error) {
+	var recipients []*url.URL
+	if to := a.GetActivityStreamsTo(); to != nil {
+		for iter := to.Begin(); iter != to.End(); iter = iter.Next() {
+			var o vocab.Type
+			var err error
+			if iter.IsIRI() {
+				o, err = c.FetchRemoteObject(ctx, iter.GetIRI(), true, 0, 1)
+				if err != nil {
+					log.Errorf("Failed to fetch remote Object: got err=%v", err)
+					continue
+				}
+				if o == nil {
+					log.Errorf("Failed to fetch Object: got=%v", o)
+					continue
+				}
+			}
+			switch {
+			case o.GetTypeName() == "OrderedCollection":
+				orderedCollection, err := object.ParseOrderedCollection(ctx, o)
+				if err != nil {
+					log.Errorf("failed to fetch remote OrderedCollection: got err=%v", err)
+					continue
+				}
+				items := orderedCollection.GetActivityStreamsOrderedItems()
+				if items == nil {
+					log.Errorf("failed to receive orderedItems: got=%v", items)
+					continue
+				}
+				for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+					switch {
+					case iter.IsIRI():
+						recipients = append(recipients, iter.GetIRI())
+					case iter.HasAny():
+						id, err := pub.GetId(iter.GetType())
+						if err != nil {
+							log.Errorf("failed to receive an ID: got err=%v", err)
+							continue
+						}
+						recipients = append(recipients, id)
+					}
+				}
+			case o.GetTypeName() == "Collection":
+				collection, err := object.ParseCollection(ctx, o)
+				if err != nil {
+					log.Errorf("failed to fetch remote OrderedCollection: got err=%v", err)
+					continue
+				}
+				items := collection.GetActivityStreamsItems()
+				if items == nil {
+					log.Errorf("failed to receive orderedItems: got=%v", items)
+					continue
+				}
+				for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+					switch {
+					case iter.IsIRI():
+						recipients = append(recipients, iter.GetIRI())
+					case iter.HasAny():
+						id, err := pub.GetId(iter.GetType())
+						if err != nil {
+							log.Errorf("failed to receive an ID: got err=%v", err)
+							continue
+						}
+						recipients = append(recipients, id)
+					}
+				}
+			default:
+				id, err := pub.GetId(iter.GetType())
+				if err != nil {
+					log.Errorf("failed to receive an ID: got err=%v", err)
+					continue
+				}
+				recipients = append(recipients, id)
+			}
+		}
+	}
+	if cc := a.GetActivityStreamsCc(); cc != nil {
+		for iter := cc.Begin(); iter != cc.End(); iter = iter.Next() {
+			var o vocab.Type
+			var err error
+			if iter.IsIRI() {
+				o, err = c.FetchRemoteObject(ctx, iter.GetIRI(), true, 0, 1)
+				if err != nil {
+					log.Errorf("Failed to fetch remote Object: got err=%v", err)
+					continue
+				}
+				if o == nil {
+					log.Errorf("Failed to fetch Object: got=%v", o)
+					continue
+				}
+			}
+			switch {
+			case o.GetTypeName() == "OrderedCollection":
+				orderedCollection, err := object.ParseOrderedCollection(ctx, o)
+				if err != nil {
+					log.Errorf("failed to fetch remote OrderedCollection: got err=%v", err)
+					continue
+				}
+				items := orderedCollection.GetActivityStreamsOrderedItems()
+				if items == nil {
+					log.Errorf("failed to receive orderedItems: got=%v", items)
+					continue
+				}
+				for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+					switch {
+					case iter.IsIRI():
+						recipients = append(recipients, iter.GetIRI())
+					case iter.HasAny():
+						id, err := pub.GetId(iter.GetType())
+						if err != nil {
+							log.Errorf("failed to receive an ID: got err=%v", err)
+							continue
+						}
+						recipients = append(recipients, id)
+					}
+				}
+			case o.GetTypeName() == "Collection":
+				collection, err := object.ParseCollection(ctx, o)
+				if err != nil {
+					log.Errorf("failed to fetch remote OrderedCollection: got err=%v", err)
+					continue
+				}
+				items := collection.GetActivityStreamsItems()
+				if items == nil {
+					log.Errorf("failed to receive orderedItems: got=%v", items)
+					continue
+				}
+				for iter := items.Begin(); iter != items.End(); iter = iter.Next() {
+					switch {
+					case iter.IsIRI():
+						recipients = append(recipients, iter.GetIRI())
+					case iter.HasAny():
+						id, err := pub.GetId(iter.GetType())
+						if err != nil {
+							log.Errorf("failed to receive an ID: got err=%v", err)
+							continue
+						}
+						recipients = append(recipients, id)
+					}
+				}
+			default:
+				id, err := pub.GetId(iter.GetType())
+				if err != nil {
+					log.Errorf("failed to receive an ID: got err=%v", err)
+					continue
+				}
+				recipients = append(recipients, id)
+			}
+		}
+	}
+	return recipients, nil
 }
 
 func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Activity) ([]*url.URL, error) {

@@ -166,3 +166,22 @@ func ParseUndoActivity(ctx context.Context, activity vocab.Type) (vocab.Activity
 	log.Infoln("Successfully resolved Type to Undo Activity")
 	return undo, nil
 }
+
+func ParseInviteActivity(ctx context.Context, activity vocab.Type) (vocab.ActivityStreamsInvite, error) {
+	if activity == nil {
+		return nil, fmt.Errorf("failed to receive an Activity to parse: got=%v", activity)
+	}
+	var invite vocab.ActivityStreamsInvite
+	inviteResolver, err := streams.NewTypeResolver(func(ctx context.Context, i vocab.ActivityStreamsInvite) error {
+		invite = i
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := inviteResolver.Resolve(ctx, activity); err != nil {
+		return nil, err
+	}
+	log.Infoln("Successfully resolved Type to Invite Activity")
+	return invite, err
+}
