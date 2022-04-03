@@ -490,13 +490,6 @@ func (d *Datastore) GetPublicInbox(ctx context.Context, minID string, maxID stri
 	defer cursor.Close(ctx)
 	page := streams.NewActivityStreamsOrderedCollectionPage()
 	orderedItems := streams.NewActivityStreamsOrderedItemsProperty()
-	activityResolver, err := streams.NewJSONResolver(func(ctx context.Context, c vocab.ActivityStreamsCreate) error {
-		orderedItems.AppendActivityStreamsCreate(c)
-		return nil
-	}, func(ctx context.Context, a vocab.ActivityStreamsAnnounce) error {
-		orderedItems.AppendActivityStreamsAnnounce(a)
-		return nil
-	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new type resolver: got err=%v", err)
 	}
@@ -512,7 +505,11 @@ func (d *Datastore) GetPublicInbox(ctx context.Context, minID string, maxID stri
 		if firstID.IsZero() {
 			firstID = m["_id"].(primitive.ObjectID)
 		}
-		if err := activityResolver.Resolve(ctx, m); err != nil {
+		activity, err := streams.ToType(ctx, m)
+		if err != nil {
+			return nil, err
+		}
+		if err := orderedItems.AppendType(activity); err != nil {
 			return nil, err
 		}
 		lastID = m["_id"].(primitive.ObjectID)
@@ -823,16 +820,6 @@ func (d *Datastore) GetActorOutbox(ctx context.Context, username, minID, maxID s
 	defer cursor.Close(ctx)
 	page := streams.NewActivityStreamsOrderedCollectionPage()
 	orderedItems := streams.NewActivityStreamsOrderedItemsProperty()
-	activityResolver, err := streams.NewJSONResolver(func(ctx context.Context, c vocab.ActivityStreamsCreate) error {
-		orderedItems.AppendActivityStreamsCreate(c)
-		return nil
-	}, func(ctx context.Context, a vocab.ActivityStreamsAnnounce) error {
-		orderedItems.AppendActivityStreamsAnnounce(a)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new type resolver: got err=%v", err)
-	}
 	var firstID primitive.ObjectID
 	var lastID primitive.ObjectID
 	totalItems := 0
@@ -845,7 +832,11 @@ func (d *Datastore) GetActorOutbox(ctx context.Context, username, minID, maxID s
 		if firstID.IsZero() {
 			firstID = m["_id"].(primitive.ObjectID)
 		}
-		if err := activityResolver.Resolve(ctx, m); err != nil {
+		activity, err := streams.ToType(ctx, m)
+		if err != nil {
+			return nil, err
+		}
+		if err := orderedItems.AppendType(activity); err != nil {
 			return nil, err
 		}
 		lastID = m["_id"].(primitive.ObjectID)
@@ -968,13 +959,6 @@ func (d *Datastore) GetActorInbox(ctx context.Context, username, minID, maxID st
 	defer cursor.Close(ctx)
 	page := streams.NewActivityStreamsOrderedCollectionPage()
 	orderedItems := streams.NewActivityStreamsOrderedItemsProperty()
-	activityResolver, err := streams.NewJSONResolver(func(ctx context.Context, c vocab.ActivityStreamsCreate) error {
-		orderedItems.AppendActivityStreamsCreate(c)
-		return nil
-	}, func(ctx context.Context, a vocab.ActivityStreamsAnnounce) error {
-		orderedItems.AppendActivityStreamsAnnounce(a)
-		return nil
-	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new type resolver: got err=%v", err)
 	}
@@ -990,7 +974,11 @@ func (d *Datastore) GetActorInbox(ctx context.Context, username, minID, maxID st
 		if firstID.IsZero() {
 			firstID = m["_id"].(primitive.ObjectID)
 		}
-		if err := activityResolver.Resolve(ctx, m); err != nil {
+		activity, err := streams.ToType(ctx, m)
+		if err != nil {
+			return nil, err
+		}
+		if err := orderedItems.AppendType(activity); err != nil {
 			return nil, err
 		}
 		lastID = m["_id"].(primitive.ObjectID)
