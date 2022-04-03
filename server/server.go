@@ -770,8 +770,9 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 	switch object.GetTypeName() {
 	case "Create":
 	case "Announce":
+	case "Invite":
 	default:
-		http.Error(w, "Failed to retrieve a Create or Announce activity", http.StatusBadRequest)
+		http.Error(w, "Failed to retrieve an appropriate activity", http.StatusBadRequest)
 		return
 	}
 	m, err := activity.JSON(object)
