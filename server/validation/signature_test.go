@@ -10,52 +10,11 @@ import (
 	"github.com/FediUni/FediUni/server/actor"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-fed/activity/streams"
-	"github.com/google/go-cmp/cmp"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 )
-
-func TestProcessSignatureHeader(t *testing.T) {
-	tests := []struct {
-		name          string
-		header        http.Header
-		wantSignature map[string]string
-		wantErr       bool
-	}{
-		{
-			name: "Test typical Signature header",
-			header: http.Header{
-				"Signature": []string{`keyId="https://testservice.com/actor#main-key",headers="(request-target) host date",validation="thisisarandomsignature"`},
-			},
-			wantSignature: map[string]string{
-				"keyId":      "https://testservice.com/actor#main-key",
-				"headers":    "(request-target) host date",
-				"validation": "thisisarandomsignature",
-			},
-		},
-		{
-			name:    "Test empty Signature header",
-			header:  http.Header{},
-			wantErr: true,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			gotSignature, err := processSignatureHeader(test.header)
-			if err != nil && !test.wantErr {
-				t.Errorf("processSignatureHeader(): returned an unexpected error: got err=%v", err)
-			}
-			if err == nil && test.wantErr {
-				t.Errorf("processSignatureHeader(): returned an unexpected error: got=%v, want=%v", err, nil)
-			}
-			if d := cmp.Diff(test.wantSignature, gotSignature); d != "" {
-				t.Errorf("processSignatureHeader(): returned an unexpected diff (-want +got): %s", d)
-			}
-		})
-	}
-}
 
 func TestValidate(t *testing.T) {
 	tests := []struct {
