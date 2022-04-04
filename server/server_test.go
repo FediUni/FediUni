@@ -575,13 +575,13 @@ func TestGetActivity(t *testing.T) {
 	}{
 		{
 			name:         "Test GET Activity that does not exist",
-			path:         "/activity/fakeactivity",
+			path:         "/api/activity/fakeactivity",
 			wantCode:     http.StatusNotFound,
 			wantActivity: nil,
 		},
 		{
 			name:         "Test GET Create Activity that exists",
-			path:         "/activity/create",
+			path:         "/api/activity/create",
 			wantCode:     http.StatusOK,
 			wantActivity: generateTestCreate(),
 		},
@@ -633,12 +633,12 @@ func TestGetActivityObject(t *testing.T) {
 	}{
 		{
 			name:     "Test GET object that does not exist",
-			path:     "/activity/fakeactivity/object",
+			path:     "/api/activity/fakeactivity/object",
 			wantCode: http.StatusNotFound,
 		},
 		{
 			name:       "Test GET Note in Create Activity",
-			path:       "/activity/create/object",
+			path:       "/api/activity/create/object",
 			wantCode:   http.StatusOK,
 			wantObject: generateTestNote(),
 		},
