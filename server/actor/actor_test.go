@@ -64,6 +64,21 @@ func TestParseActor(t *testing.T) {
 			want:  generateTestService(),
 		},
 		{
+			name:  "Test Parsing Typical Group",
+			actor: generateTestGroup(),
+			want:  generateTestGroup(),
+		},
+		{
+			name:  "Test Parsing Typical Organization",
+			actor: generateTestOrganization(),
+			want:  generateTestOrganization(),
+		},
+		{
+			name:  "Test Parsing Typical Application",
+			actor: generateTestApplication(),
+			want:  generateTestApplication(),
+		},
+		{
 			name:    "Test Parsing nil Actor",
 			actor:   nil,
 			want:    nil,
@@ -144,4 +159,31 @@ func generateTestService() vocab.ActivityStreamsService {
 	idProperty.Set(id)
 	s.SetJSONLDId(idProperty)
 	return s
+}
+
+func generateTestGroup() vocab.ActivityStreamsGroup {
+	g := streams.NewActivityStreamsGroup()
+	id, _ := url.Parse("http://testserver.com/actor/testbot")
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	g.SetJSONLDId(idProperty)
+	return g
+}
+
+func generateTestApplication() vocab.ActivityStreamsApplication {
+	a := streams.NewActivityStreamsApplication()
+	id, _ := url.Parse("http://testserver.com/actor/testbot")
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	a.SetJSONLDId(idProperty)
+	return a
+}
+
+func generateTestOrganization() vocab.ActivityStreamsOrganization {
+	g := streams.NewActivityStreamsOrganization()
+	id, _ := url.Parse("http://testserver.com/actor/testbot")
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	g.SetJSONLDId(idProperty)
+	return g
 }
