@@ -42,7 +42,7 @@ import (
 
 type Datastore interface {
 	GetActorByUsername(context.Context, string) (vocab.ActivityStreamsPerson, error)
-	GetActivityByObjectID(context.Context, string, string) (vocab.Type, error)
+	GetActivityByObjectID(context.Context, string, string) (activity.Activity, error)
 	GetActivityByActivityID(context.Context, string) (vocab.Type, error)
 	GetFollowersByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	GetFollowingByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
@@ -587,7 +587,12 @@ func (s *Server) getActivityObject(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load activity", http.StatusNotFound)
 		return
 	}
-	m, err := activity.JSON(a)
+	var o vocab.Type
+	objects := a.GetActivityStreamsObject()
+	for iter := objects.Begin(); iter != objects.End(); iter = iter.Next() {
+		o = iter.GetActivityStreamsObject()
+	}
+	m, err := activity.JSON(o)
 	if err != nil {
 		log.Errorf("failed to serialize activity with ID=%q: got err=%v", activityID, err)
 		http.Error(w, "failed to load activity", http.StatusNotFound)

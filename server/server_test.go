@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/FediUni/FediUni/server/activity"
 	"github.com/FediUni/FediUni/server/object"
 	"github.com/alicebob/miniredis/v2"
 	"io/ioutil"
@@ -29,7 +30,7 @@ type TestDatastore struct {
 	Datastore
 	knownUsers      map[string]*user.User
 	knownActors     map[string]actor.Person
-	knownActivities map[string]vocab.Type
+	knownActivities map[string]activity.Activity
 	privateKeys     map[string]string
 }
 
@@ -39,7 +40,7 @@ func NewTestDatastore(url *url.URL, a actor.Person, privateKey *bytes.Buffer) *T
 		knownActors: map[string]actor.Person{
 			"brandonstark": a,
 		},
-		knownActivities: map[string]vocab.Type{
+		knownActivities: map[string]activity.Activity{
 			"create": generateTestCreate(),
 		},
 		privateKeys: map[string]string{
@@ -76,7 +77,7 @@ func (d *TestDatastore) AddActivityToActorInbox(context.Context, vocab.Type, str
 	return fmt.Errorf("AddActivityToActorInbox() is unimplemented")
 }
 
-func (d *TestDatastore) GetActivityByObjectID(_ context.Context, objectID string, _ string) (vocab.Type, error) {
+func (d *TestDatastore) GetActivityByObjectID(_ context.Context, objectID string, _ string) (activity.Activity, error) {
 	activity := d.knownActivities[objectID]
 	if activity == nil {
 		return nil, fmt.Errorf("failed to load activity with Object ID=%q", objectID)
@@ -618,6 +619,63 @@ func TestGetActivity(t *testing.T) {
 			t.Errorf("getActivity() failed to return an activity: got err=%v", err)
 		}
 		if d := cmp.Diff(test.wantActivity, gotActivity); d != "" {
+			t.Errorf("getActivity() returned an unexpected diff: (+got -want) %s", d)
+		}
+	}
+}
+
+func TestGetActivityObject(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		wantCode   int
+		wantObject vocab.Type
+	}{
+		{
+			name:     "Test GET object that does not exist",
+			path:     "/activity/fakeactivity/object",
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:       "Test GET Note in Create Activity",
+			path:       "/activity/create/object",
+			wantCode:   http.StatusOK,
+			wantObject: generateTestNote(),
+		},
+	}
+	for _, test := range tests {
+		s, _ := New(nil, NewTestDatastore(nil, nil, nil), nil, nil, "", "")
+		server := httptest.NewServer(s.Router)
+		defer server.Close()
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s%s", server.URL, test.path), nil)
+		if err != nil {
+			t.Fatalf("Failed to create Activity request: got err=%v", err)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Errorf("getActivity() returned an unexpected error: got err=%v", err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != test.wantCode {
+			t.Errorf("getActivity() returned an unexpected HTTP StatusCode: got=%d, want=%d", res.StatusCode, test.wantCode)
+		}
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			t.Errorf("getActivity() failed to return a response body: got err=%v", err)
+		}
+		if res.StatusCode != http.StatusOK {
+			return
+		}
+		var gotObject vocab.Type
+		var m map[string]interface{}
+		if err := json.Unmarshal(body, &m); err != nil {
+			t.Errorf("getActivity() failed to return a JSON body: got err=%v", err)
+		}
+		gotObject, err = streams.ToType(context.Background(), m)
+		if err != nil {
+			t.Errorf("getActivity() failed to return an activity: got err=%v", err)
+		}
+		if d := cmp.Diff(test.wantObject, gotObject); d != "" {
 			t.Errorf("getActivity() returned an unexpected diff: (+got -want) %s", d)
 		}
 	}
