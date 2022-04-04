@@ -555,3 +555,34 @@ func TestLogin(t *testing.T) {
 		})
 	}
 }
+
+func TestGetActivity(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		wantCode int
+	}{
+		{
+			name:     "Test GET Activity that does not exist",
+			path:     "/activity/fakeactivity",
+			wantCode: http.StatusNotFound,
+		},
+	}
+	for _, test := range tests {
+		s, _ := New(nil, NewTestDatastore(nil, nil, nil), nil, nil, "", "")
+		server := httptest.NewServer(s.Router)
+		defer server.Close()
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s%s", server.URL, test.path), nil)
+		if err != nil {
+			t.Fatalf("Failed to create Activity request: got err=%v", err)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Errorf("getActivity() returned an unexpected error: got err=%v", err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != test.wantCode {
+			t.Errorf("getActivity() returned an unexpected HTTP StatusCode: got=%d, want=%d", res.StatusCode, test.wantCode)
+		}
+	}
+}
