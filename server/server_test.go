@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/FediUni/FediUni/server/object"
 	"github.com/alicebob/miniredis/v2"
 	"io/ioutil"
 	"mime/multipart"
@@ -26,9 +27,10 @@ import (
 
 type TestDatastore struct {
 	Datastore
-	knownUsers  map[string]*user.User
-	knownActors map[string]actor.Person
-	privateKeys map[string]string
+	knownUsers      map[string]*user.User
+	knownActors     map[string]actor.Person
+	knownActivities map[string]vocab.Type
+	privateKeys     map[string]string
 }
 
 func NewTestDatastore(url *url.URL, a actor.Person, privateKey *bytes.Buffer) *TestDatastore {
@@ -36,6 +38,9 @@ func NewTestDatastore(url *url.URL, a actor.Person, privateKey *bytes.Buffer) *T
 		knownUsers: map[string]*user.User{},
 		knownActors: map[string]actor.Person{
 			"brandonstark": a,
+		},
+		knownActivities: map[string]vocab.Type{
+			"create": generateTestCreate(),
 		},
 		privateKeys: map[string]string{
 			"brandonstark": privateKey.String(),
@@ -71,8 +76,12 @@ func (d *TestDatastore) AddActivityToActorInbox(context.Context, vocab.Type, str
 	return fmt.Errorf("AddActivityToActorInbox() is unimplemented")
 }
 
-func (d *TestDatastore) GetActivityByObjectID(_ context.Context, _ string, _ string) (vocab.Type, error) {
-	return nil, fmt.Errorf("GetActivityByObjectID() is unimplemented")
+func (d *TestDatastore) GetActivityByObjectID(_ context.Context, objectID string, _ string) (vocab.Type, error) {
+	activity := d.knownActivities[objectID]
+	if activity == nil {
+		return nil, fmt.Errorf("failed to load activity with Object ID=%q", objectID)
+	}
+	return activity, nil
 }
 
 func (d *TestDatastore) GetActivityByActivityID(_ context.Context, _ string) (vocab.Type, error) {
@@ -558,14 +567,22 @@ func TestLogin(t *testing.T) {
 
 func TestGetActivity(t *testing.T) {
 	tests := []struct {
-		name     string
-		path     string
-		wantCode int
+		name         string
+		path         string
+		wantCode     int
+		wantActivity vocab.Type
 	}{
 		{
-			name:     "Test GET Activity that does not exist",
-			path:     "/activity/fakeactivity",
-			wantCode: http.StatusNotFound,
+			name:         "Test GET Activity that does not exist",
+			path:         "/activity/fakeactivity",
+			wantCode:     http.StatusNotFound,
+			wantActivity: nil,
+		},
+		{
+			name:         "Test GET Create Activity that exists",
+			path:         "/activity/create",
+			wantCode:     http.StatusOK,
+			wantActivity: generateTestCreate(),
 		},
 	}
 	for _, test := range tests {
@@ -584,5 +601,50 @@ func TestGetActivity(t *testing.T) {
 		if res.StatusCode != test.wantCode {
 			t.Errorf("getActivity() returned an unexpected HTTP StatusCode: got=%d, want=%d", res.StatusCode, test.wantCode)
 		}
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			t.Errorf("getActivity() failed to return a response body: got err=%v", err)
+		}
+		if res.StatusCode != http.StatusOK {
+			return
+		}
+		var gotActivity vocab.Type
+		var m map[string]interface{}
+		if err := json.Unmarshal(body, &m); err != nil {
+			t.Errorf("getActivity() failed to return a JSON body: got err=%v", err)
+		}
+		gotActivity, err = streams.ToType(context.Background(), m)
+		if err != nil {
+			t.Errorf("getActivity() failed to return an activity: got err=%v", err)
+		}
+		if d := cmp.Diff(test.wantActivity, gotActivity); d != "" {
+			t.Errorf("getActivity() returned an unexpected diff: (+got -want) %s", d)
+		}
 	}
+}
+
+func generateTestPerson() vocab.ActivityStreamsPerson {
+	p := streams.NewActivityStreamsPerson()
+	id, _ := url.Parse("http://testserver.com/actor/brandonstark")
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	p.SetJSONLDId(idProperty)
+	outboxProperty := streams.NewActivityStreamsOutboxProperty()
+	outboxID, _ := url.Parse("http://testserver.com/actor/brandonstark/outbox")
+	outboxProperty.SetIRI(outboxID)
+	p.SetActivityStreamsOutbox(outboxProperty)
+	return p
+}
+
+func generateTestCreate() vocab.ActivityStreamsCreate {
+	create, _ := object.WrapInCreate(context.Background(), generateTestNote(), generateTestPerson())
+	return create
+}
+
+func generateTestNote() vocab.ActivityStreamsNote {
+	note := streams.NewActivityStreamsNote()
+	id, _ := url.Parse("http://testserver.com/actor/brandonstark/outbox/note")
+	idProperty := streams.NewJSONLDIdProperty()
+	idProperty.Set(id)
+	return note
 }

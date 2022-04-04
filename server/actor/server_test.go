@@ -140,7 +140,7 @@ func (c testClient) DereferenceObjectsInOrderedCollection(ctx context.Context, c
 }
 
 func (c testClient) DereferenceOrderedItems(ctx context.Context, items vocab.ActivityStreamsOrderedItemsProperty, depth int, maxDepth int) error {
-	create, _ := object.WrapInCreate(context.Background(), generateTestNote(), generateTestPerson())
+	create := generateTestCreate()
 	items.SetType(0, create)
 	return nil
 }
@@ -381,10 +381,15 @@ func generateTestOutboxPageDereferenced() vocab.ActivityStreamsOrderedCollection
 	page := generateTestOutboxPage()
 	orderedItems := page.GetActivityStreamsOrderedItems()
 	note := generateTestNote()
-	create, _ := object.WrapInCreate(context.Background(), note, generateTestPerson())
+	create := generateTestCreate()
 	create.SetJSONLDId(note.GetJSONLDId())
 	orderedItems.SetType(0, create)
 	return page
+}
+
+func generateTestCreate() vocab.ActivityStreamsCreate {
+	create, _ := object.WrapInCreate(context.Background(), generateTestNote(), generateTestPerson())
+	return create
 }
 
 func generateTestNote() vocab.ActivityStreamsNote {
