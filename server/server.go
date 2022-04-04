@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -327,7 +328,16 @@ func (s *Server) getAnyActorOutbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to receive an Actor identifier", http.StatusBadRequest)
 		return
 	}
-	page, err := s.Actor.GetAnyOutbox(ctx, identifier, 0)
+	rawPageNumber := r.URL.Query().Get("page")
+	if rawPageNumber == "" {
+		rawPageNumber = "0"
+	}
+	pageNumber, err := strconv.Atoi(rawPageNumber)
+	if err != nil {
+		http.Error(w, "Failed to receive a valid Page number", http.StatusBadRequest)
+		return
+	}
+	page, err := s.Actor.GetAnyOutbox(ctx, identifier, pageNumber)
 	if err != nil {
 		log.Errorf("failed to get Actor=%q Outbox: got err=%v", identifier, err)
 		http.Error(w, "Failed to load Outbox", http.StatusNotFound)
