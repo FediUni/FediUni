@@ -262,7 +262,7 @@ func TestDereferenceObjectsInOrderedCollection(t *testing.T) {
 		want  map[string]interface{}
 	}{
 		{
-			name: "Test dereference orderedItems with Note",
+			name: "Test dereference orderedItems on Page 1",
 			page: 0,
 			key: []string{
 				"https://non-existent-site.com/object/fake-ordered-collection",
@@ -316,6 +316,63 @@ func TestDereferenceObjectsInOrderedCollection(t *testing.T) {
 					},
 				},
 				"next": "https://non-existent-site.com/object/fake-ordered-collection-page-2",
+			},
+		},
+
+		{
+			name: "Test dereference orderedItems on Page 2",
+			page: 1,
+			key: []string{
+				"https://non-existent-site.com/object/fake-ordered-collection",
+				"https://non-existent-site.com/object/fake-ordered-collection-page-1",
+				"https://non-existent-site.com/object/fake-ordered-collection-page-2",
+				"https://non-existent-site.com/actor/fake-actor",
+				"https://non-existent-site.com/object/fake-note",
+			},
+			value: []map[string]interface{}{
+				{
+					"@context": "https://www.w3.org/ns/activitystreams",
+					"id":       "https://non-existent-site.com/object/fake-ordered-collection",
+					"type":     "OrderedCollection",
+					"first":    "https://non-existent-site.com/object/fake-ordered-collection-page-1",
+				},
+				{
+					"@context":     "https://www.w3.org/ns/activitystreams",
+					"id":           "https://non-existent-site.com/object/fake-ordered-collection-page-1",
+					"type":         "OrderedCollectionPage",
+					"orderedItems": "https://non-existent-site.com/object/fake-note",
+					"next":         "https://non-existent-site.com/object/fake-ordered-collection-page-2",
+				},
+				{
+					"@context":     "https://www.w3.org/ns/activitystreams",
+					"id":           "https://non-existent-site.com/object/fake-ordered-collection-page-2",
+					"type":         "OrderedCollectionPage",
+					"orderedItems": "https://non-existent-site.com/object/fake-note",
+				},
+				{
+					"@context": "https://www.w3.org/ns/activitystreams",
+					"id":       "https://non-existent-site.com/actor/fake-actor",
+					"type":     "Person",
+				},
+				{
+					"@context":     "https://www.w3.org/ns/activitystreams",
+					"id":           "https://non-existent-site.com/object/fake-note",
+					"type":         "Note",
+					"attributedTo": "https://non-existent-site.com/actor/fake-actor",
+				},
+			},
+			want: map[string]interface{}{
+				"@context": "https://www.w3.org/ns/activitystreams",
+				"id":       "https://non-existent-site.com/object/fake-ordered-collection-page-2",
+				"type":     "OrderedCollectionPage",
+				"orderedItems": map[string]interface{}{
+					"id":   "https://non-existent-site.com/object/fake-note",
+					"type": "Note",
+					"attributedTo": map[string]interface{}{
+						"id":   "https://non-existent-site.com/actor/fake-actor",
+						"type": "Person",
+					},
+				},
 			},
 		},
 	}
