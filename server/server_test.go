@@ -586,8 +586,12 @@ func TestGetActivity(t *testing.T) {
 			wantActivity: generateTestCreate(),
 		},
 	}
+	serverURL, err := url.Parse("https://testserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: got err=%v", err)
+	}
 	for _, test := range tests {
-		s, _ := New(nil, NewTestDatastore(nil, nil, nil), nil, nil, "", "")
+		s, _ := New(serverURL, NewTestDatastore(nil, nil, nil), nil, nil, "", "")
 		server := httptest.NewServer(s.Router)
 		defer server.Close()
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s%s", server.URL, test.path), nil)
@@ -643,8 +647,12 @@ func TestGetActivityObject(t *testing.T) {
 			wantObject: generateTestNote(),
 		},
 	}
+	serverURL, err := url.Parse("https://testserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: got err=%v", err)
+	}
 	for _, test := range tests {
-		s, _ := New(nil, NewTestDatastore(nil, nil, nil), nil, nil, "", "")
+		s, _ := New(serverURL, NewTestDatastore(nil, nil, nil), nil, nil, "", "")
 		server := httptest.NewServer(s.Router)
 		defer server.Close()
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s%s", server.URL, test.path), nil)
