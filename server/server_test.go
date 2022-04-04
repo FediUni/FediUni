@@ -8,6 +8,7 @@ import (
 	"github.com/FediUni/FediUni/server/activity"
 	"github.com/FediUni/FediUni/server/object"
 	"github.com/alicebob/miniredis/v2"
+	"github.com/go-chi/chi/v5"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -143,7 +144,8 @@ func (d *TestDatastore) GetActorOutboxAsOrderedCollection(context.Context, strin
 
 type TestClient struct {
 	Client
-	knownActors map[string]actor.Person
+	knownActors     map[string]actor.Person
+	knownActivities map[string]vocab.Type
 }
 
 func NewTestClient(a actor.Person) *TestClient {
@@ -158,6 +160,14 @@ func (c *TestClient) FetchRemoteActor(_ context.Context, identifier string) (act
 	a := c.knownActors[identifier]
 	if a == nil {
 		return nil, fmt.Errorf("failed to fetch actor=%q", identifier)
+	}
+	return a, nil
+}
+
+func (c *TestClient) FetchRemoteObject(_ context.Context, id *url.URL, _ bool, _ int, _ int) (vocab.Type, error) {
+	a := c.knownActivities[id.String()]
+	if a == nil {
+		return nil, fmt.Errorf("failed to fetch activity ID=%q", id)
 	}
 	return a, nil
 }
@@ -626,6 +636,72 @@ func TestGetActivity(t *testing.T) {
 		server := httptest.NewServer(s.Router)
 		defer server.Close()
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s%s", server.URL, test.path), nil)
+		if err != nil {
+			t.Fatalf("Failed to create Activity request: got err=%v", err)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Errorf("getActivity() returned an unexpected error: got err=%v", err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != test.wantCode {
+			t.Errorf("getActivity() returned an unexpected HTTP StatusCode: got=%d, want=%d", res.StatusCode, test.wantCode)
+		}
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			t.Errorf("getActivity() failed to return a response body: got err=%v", err)
+		}
+		if res.StatusCode != http.StatusOK {
+			return
+		}
+		var gotActivity vocab.Type
+		var m map[string]interface{}
+		if err := json.Unmarshal(body, &m); err != nil {
+			t.Errorf("getActivity() failed to return a JSON body: got err=%v", err)
+		}
+		gotActivity, err = streams.ToType(context.Background(), m)
+		if err != nil {
+			t.Errorf("getActivity() failed to return an activity: got err=%v", err)
+		}
+		if d := cmp.Diff(test.wantActivity, gotActivity); d != "" {
+			t.Errorf("getActivity() returned an unexpected diff: (+got -want) %s", d)
+		}
+	}
+}
+
+func TestGetAnyActivity(t *testing.T) {
+	tests := []struct {
+		name         string
+		path         string
+		wantCode     int
+		wantActivity vocab.Type
+	}{
+		{
+			name:         "Test GET Activity that does not exist",
+			path:         "/api/activity/fakeactivity",
+			wantCode:     http.StatusNotFound,
+			wantActivity: nil,
+		},
+		{
+			name:         "Test GET Create Activity that exists",
+			path:         "/api/activity/create",
+			wantCode:     http.StatusOK,
+			wantActivity: generateTestCreate(),
+		},
+	}
+	serverURL, err := url.Parse("https://testserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse URL: got err=%v", err)
+	}
+	for _, test := range tests {
+		s, _ := New(serverURL, NewTestDatastore(nil, nil, nil), NewTestClient(nil), nil, "", "")
+		// Use a different router to remove authentication middleware.
+		r := chi.NewRouter()
+		r.Get("/api/activity", s.getAnyActivity)
+		server := httptest.NewServer(r)
+		defer server.Close()
+		activityID := fmt.Sprintf("%s%s", server.URL, test.path)
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/activity?id=%s", server.URL, activityID), nil)
 		if err != nil {
 			t.Fatalf("Failed to create Activity request: got err=%v", err)
 		}

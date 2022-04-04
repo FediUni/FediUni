@@ -779,7 +779,7 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 	object, err := s.Client.FetchRemoteObject(ctx, activityID, true, 0, maxDepth)
 	if err != nil {
 		log.Errorf("Failed to retrieve object ID=%q: got err=%v", activityID, err)
-		http.Error(w, "Failed to retrieve activity", http.StatusInternalServerError)
+		http.Error(w, "Failed to retrieve activity", http.StatusNotFound)
 		return
 	}
 	switch object.GetTypeName() {
