@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
+	"net/url"
 )
 
 type Object interface {
@@ -134,4 +135,23 @@ func WrapInInvite(event vocab.ActivityStreamsEvent, actor vocab.Type) (vocab.Act
 	invite.SetActivityStreamsTo(event.GetActivityStreamsTo())
 	invite.SetActivityStreamsCc(event.GetActivityStreamsCc())
 	return invite, nil
+}
+
+// WrapInAccept accepts an activity ID and wraps it in an Accept activity.
+// WrapInAccept does not handle ID assignment.
+func WrapInAccept(activityID *url.URL, actorID *url.URL) (vocab.ActivityStreamsAccept, error) {
+	if activityID == nil {
+		return nil, fmt.Errorf("failed to append Object to Accept Activity: got Object ID=%v", activityID)
+	}
+	if actorID == nil {
+		return nil, fmt.Errorf("failed to append Actor to Accept Activity: got Object ID=%v", actorID)
+	}
+	acceptActivity := streams.NewActivityStreamsAccept()
+	actorProperty := streams.NewActivityStreamsActorProperty()
+	actorProperty.AppendIRI(actorID)
+	acceptActivity.SetActivityStreamsActor(actorProperty)
+	objectProperty := streams.NewActivityStreamsObjectProperty()
+	objectProperty.AppendIRI(activityID)
+	acceptActivity.SetActivityStreamsObject(objectProperty)
+	return acceptActivity, nil
 }

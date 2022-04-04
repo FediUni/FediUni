@@ -8,6 +8,7 @@ import (
 	"github.com/FediUni/FediUni/server/file"
 	"github.com/FediUni/FediUni/server/object"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/sync/errgroup"
 	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
@@ -20,7 +21,6 @@ import (
 	"github.com/FediUni/FediUni/server/activity"
 	"github.com/FediUni/FediUni/server/actor"
 	"github.com/FediUni/FediUni/server/client"
-	"github.com/FediUni/FediUni/server/follower"
 	"github.com/FediUni/FediUni/server/user"
 	"github.com/FediUni/FediUni/server/validation"
 	"github.com/dgrijalva/jwt-go"
@@ -1214,11 +1214,22 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	publicKeyID := person.GetW3IDSecurityV1PublicKey().Begin().Get().GetJSONLDId().Get().String()
+	var eg errgroup.Group
+	sem := make(chan struct{}, 20)
+	defer close(sem)
 	for _, inbox := range inboxes {
 		log.Infof("Posting Activity to Inbox=%q", inbox.String())
-		if err := s.Client.PostToInbox(ctx, inbox, toDeliver, publicKeyID, privateKey); err != nil {
-			log.Errorf("failed to post to inbox=%q: got err=%v", inbox.String(), err)
-		}
+		inboxID := inbox
+		eg.Go(func() error {
+			defer func() {
+				<-sem
+			}()
+			sem <- struct{}{}
+			return s.Client.PostToInbox(ctx, inboxID, toDeliver, publicKeyID, privateKey)
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		log.Errorf("failed to post to some inbox: got err=%v", err)
 	}
 	if !isPublic {
 		w.WriteHeader(http.StatusOK)
@@ -1612,7 +1623,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	log.Infoln("Received Follow Activity")
 	follow, err := activity.ParseFollowActivity(ctx, activityRequest)
 	if err != nil {
-		return fmt.Errorf("failed to parse handleFollowRequest activityRequest: got err=%v", err)
+		return fmt.Errorf("failed to parse Activity as a Follow Activity: got err=%v", err)
 	}
 	var followerID *url.URL
 	followingActor := follow.GetActivityStreamsActor()
@@ -1654,7 +1665,10 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if followedID == nil {
 		return fmt.Errorf("followed ID is unspecified: got=%q", followerID)
 	}
-	accept := follower.PrepareAcceptActivity(follow, followedID)
+	accept, err := object.WrapInAccept(follow.GetJSONLDId().Get(), followedID)
+	if err != nil {
+		return fmt.Errorf("failed to create an Accept Activity: got err=%v", err)
+	}
 	// Ensure Actor exists on this server before adding activity.
 	person, err := s.Datastore.GetActorByActorID(ctx, followedID.String())
 	if err != nil {
