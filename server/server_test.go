@@ -102,7 +102,11 @@ func (d *TestDatastore) RemoveFollowerFromActor(ctx context.Context, actorID, fo
 }
 
 func (d *TestDatastore) GetUserByUsername(_ context.Context, username string) (*user.User, error) {
-	return d.knownUsers[username], nil
+	user := d.knownUsers[username]
+	if user == nil {
+		return nil, fmt.Errorf("failed to load user")
+	}
+	return user, nil
 }
 
 func (d *TestDatastore) GetFollowersByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error) {
@@ -518,6 +522,13 @@ func TestLogin(t *testing.T) {
 			name:     "Test invalid password",
 			username: "testuser",
 			password: "badpassword",
+			wantErr:  true,
+		},
+
+		{
+			name:     "Test invalid username",
+			username: "fakeuser",
+			password: "testpassword",
 			wantErr:  true,
 		},
 	}
