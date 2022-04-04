@@ -506,36 +506,43 @@ func TestLogin(t *testing.T) {
 		name     string
 		username string
 		password string
-		params   url.Values
+		wantErr  bool
 	}{
 		{
 			name:     "Test valid username and password",
 			username: "testuser",
 			password: "testpassword",
+			wantErr:  false,
+		},
+		{
+			name:     "Test invalid password",
+			username: "testuser",
+			password: "badpassword",
+			wantErr:  true,
 		},
 	}
 	url, err := url.Parse("https://testserver.com")
 	if err != nil {
 		t.Fatalf("Failed to parse URL: got err=%v", err)
 	}
+	u := &user.User{
+		Username: "testuser",
+	}
+	hashedPassword, err := user.HashPassword("testpassword")
+	if err != nil {
+		t.Fatalf("failed to hash password: got err=%v", err)
+	}
+	u.Password = string(hashedPassword)
 	for _, test := range tests {
+		datastore := NewTestDatastore(url, nil, nil)
+		if err := datastore.CreateUser(context.Background(), u); err != nil {
+			t.Fatalf("failed to create user in datastore: got err=%v", err)
+		}
 		t.Run(test.name, func(t *testing.T) {
-			datastore := NewTestDatastore(url, nil, nil)
 			secret := "thisisatestsecret"
 			s, _ := New(url, datastore, nil, nil, secret, "")
 			server := httptest.NewServer(s.Router)
 			defer server.Close()
-			u := &user.User{
-				Username: test.username,
-			}
-			hashedPassword, err := user.HashPassword(test.password)
-			if err != nil {
-				t.Fatalf("failed to hash password: got err=%v", err)
-			}
-			u.Password = string(hashedPassword)
-			if err := datastore.CreateUser(context.Background(), u); err != nil {
-				t.Fatalf("failed to create user in datastore: got err=%v", err)
-			}
 			loginURL := fmt.Sprintf("%s/api/login", server.URL)
 			buf := &bytes.Buffer{}
 			writer := multipart.NewWriter(buf)
@@ -556,6 +563,9 @@ func TestLogin(t *testing.T) {
 			if err != nil {
 				t.Errorf("failed to read from response body: got err=%v", err)
 			}
+			if res.StatusCode != http.StatusOK && test.wantErr {
+				return
+			}
 			var m map[string]interface{}
 			if err := json.Unmarshal(body, &m); err != nil {
 				t.Errorf("failed to unmarshal JSON from response body: got err=%v", err)
@@ -569,7 +579,7 @@ func TestLogin(t *testing.T) {
 			}
 			tokenAuth = jwtauth.New("HS256", []byte(secret), nil)
 			_, err = jwtauth.VerifyToken(tokenAuth, token)
-			if err != nil {
+			if err != nil && !test.wantErr {
 				t.Errorf("failed to verify JWT token: got err=%v", err)
 			}
 		})
