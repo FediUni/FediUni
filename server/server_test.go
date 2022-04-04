@@ -259,13 +259,23 @@ func TestGetAnyActor(t *testing.T) {
 	tests := []struct {
 		name       string
 		username   string
+		domain     string
 		wantRes    actor.Actor
 		wantStatus int
 		wantErr    bool
 	}{
 		{
+			name:       "Test actor does not exist",
+			username:   "fakeactor",
+			domain:     "testserver.com",
+			wantRes:    nil,
+			wantStatus: http.StatusNotFound,
+			wantErr:    false,
+		},
+		{
 			name:       "Test get actor",
 			username:   "brandonstark",
+			domain:     "testserver.com",
 			wantRes:    person,
 			wantStatus: http.StatusOK,
 			wantErr:    false,
@@ -278,7 +288,7 @@ func TestGetAnyActor(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create server: got err=%v", err)
 			}
-			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/actor?identifier=@%s@%s", test.username, "testserver.com"), nil)
+			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/actor?identifier=@%s@%s", test.username, test.domain), nil)
 			if err != nil {
 				t.Errorf("getActor() returned an unexpected err: got %v want %v", err, nil)
 			}
