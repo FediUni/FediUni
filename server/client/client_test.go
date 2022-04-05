@@ -24,7 +24,7 @@ func (c *TestCache) Load(key string) ([]byte, error) {
 	return c.cache[key], nil
 }
 
-func TestFetchRemoteObject(t *testing.T) {
+func TestFetchObject(t *testing.T) {
 	tests := []struct {
 		name  string
 		key   string
@@ -40,6 +40,10 @@ func TestFetchRemoteObject(t *testing.T) {
 			},
 		},
 	}
+	url, err := url.Parse("https://localserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse server URL: got err=%v", err)
+	}
 	for _, test := range tests {
 		marshalledValue, err := json.Marshal(test.value)
 		if err != nil {
@@ -52,18 +56,19 @@ func TestFetchRemoteObject(t *testing.T) {
 						test.key: marshalledValue,
 					},
 				},
+				InstanceURL: url,
 			}
 			iri, err := url.Parse(test.key)
 			if err != nil {
 				t.Errorf("failed to parse key=%q: got err=%v", test.key, err)
 			}
-			object, err := client.FetchRemoteObject(context.Background(), iri, false, 0, 1)
+			object, err := client.FetchObject(context.Background(), iri, false, 0, 1)
 			if err != nil {
-				t.Errorf("client.FetchRemoteObject(): failed to fetch remote object: got err=%v", err)
+				t.Errorf("client.FetchObject(): failed to fetch remote object: got err=%v", err)
 			}
 			gotObject, err := streams.Serialize(object)
 			if d := cmp.Diff(gotObject, test.value); d != "" {
-				t.Errorf("client.FetchRemoteObject(): returned a different object: (-want +got) %s", d)
+				t.Errorf("client.FetchObject(): returned a different object: (-want +got) %s", d)
 			}
 		})
 	}
@@ -122,6 +127,10 @@ func TestCreate(t *testing.T) {
 			},
 		},
 	}
+	localURL, err := url.Parse("https://localserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse server URL: got err=%v", err)
+	}
 	for _, test := range tests {
 		marshalledCreate, err := json.Marshal(test.value[0])
 		if err != nil {
@@ -144,18 +153,19 @@ func TestCreate(t *testing.T) {
 						test.key[2]: marshalledNote,
 					},
 				},
+				InstanceURL: localURL,
 			}
 			iri, err := url.Parse(test.key[0])
 			if err != nil {
 				t.Errorf("failed to parse key=%q: got err=%v", test.key, err)
 			}
-			object, err := client.FetchRemoteObject(context.Background(), iri, false, 0, 1)
+			object, err := client.FetchObject(context.Background(), iri, false, 0, 1)
 			if err != nil {
-				t.Errorf("client.FetchRemoteObject(): failed to fetch remote object: got err=%v", err)
+				t.Errorf("client.FetchObject(): failed to fetch remote object: got err=%v", err)
 			}
 			gotObject, err := streams.Serialize(object)
 			if d := cmp.Diff(gotObject, test.want); d != "" {
-				t.Errorf("client.FetchRemoteObject(): returned a different object: (-want +got) %s", d)
+				t.Errorf("client.FetchObject(): returned a different object: (-want +got) %s", d)
 			}
 		})
 	}
@@ -214,6 +224,10 @@ func TestAnnounce(t *testing.T) {
 			},
 		},
 	}
+	localURL, err := url.Parse("https://localserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse server URL: got err=%v", err)
+	}
 	for _, test := range tests {
 		marshalledAnnounce, err := json.Marshal(test.value[0])
 		if err != nil {
@@ -236,18 +250,19 @@ func TestAnnounce(t *testing.T) {
 						test.key[2]: marshalledNote,
 					},
 				},
+				InstanceURL: localURL,
 			}
 			iri, err := url.Parse(test.key[0])
 			if err != nil {
 				t.Errorf("failed to parse key=%q: got err=%v", test.key, err)
 			}
-			object, err := client.FetchRemoteObject(context.Background(), iri, false, 0, 1)
+			object, err := client.FetchObject(context.Background(), iri, false, 0, 1)
 			if err != nil {
-				t.Errorf("client.FetchRemoteObject(): failed to fetch remote object: got err=%v", err)
+				t.Errorf("client.FetchObject(): failed to fetch remote object: got err=%v", err)
 			}
 			gotObject, err := streams.Serialize(object)
 			if d := cmp.Diff(gotObject, test.want); d != "" {
-				t.Errorf("client.FetchRemoteObject(): returned a different object: (-want +got) %s", d)
+				t.Errorf("client.FetchObject(): returned a different object: (-want +got) %s", d)
 			}
 		})
 	}
@@ -376,6 +391,10 @@ func TestDereferenceObjectsInOrderedCollection(t *testing.T) {
 			},
 		},
 	}
+	localURL, err := url.Parse("https://localserver.com")
+	if err != nil {
+		t.Fatalf("Failed to parse server URL: got err=%v", err)
+	}
 	for _, test := range tests {
 		marshalledOrderedCollection, err := json.Marshal(test.value[0])
 		if err != nil {
@@ -408,6 +427,7 @@ func TestDereferenceObjectsInOrderedCollection(t *testing.T) {
 						test.key[4]: marshalledNote,
 					},
 				},
+				InstanceURL: localURL,
 			}
 			marshalledCollection, err := streams.ToType(context.Background(), test.value[0])
 			if err != nil {
@@ -580,6 +600,10 @@ func TestDereferenceObjectsInCollection(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to marshal value: got err=%v", err)
 		}
+		localURL, err := url.Parse("https://localserver.com")
+		if err != nil {
+			t.Fatalf("Failed to parse server URL: got err=%v", err)
+		}
 		t.Run(test.name, func(t *testing.T) {
 			client := &Client{
 				Cache: &TestCache{
@@ -591,6 +615,7 @@ func TestDereferenceObjectsInCollection(t *testing.T) {
 						test.key[4]: marshalledNote,
 					},
 				},
+				InstanceURL: localURL,
 			}
 			marshalledCollection, err := streams.ToType(context.Background(), test.value[0])
 			if err != nil {

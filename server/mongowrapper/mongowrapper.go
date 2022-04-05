@@ -567,7 +567,7 @@ func (d *Datastore) GetActivityByObjectID(ctx context.Context, activityID, baseU
 	return nil, fmt.Errorf("activity retrieved is invalid: got=%v", a)
 }
 
-func (d *Datastore) GetActivityByActivityID(ctx context.Context, activityID string) (vocab.Type, error) {
+func (d *Datastore) GetActivityByActivityID(ctx context.Context, activityID string) (activity.Activity, error) {
 	activities := d.client.Database("FediUni").Collection("activities")
 	filter := bson.D{{"id", activityID}}
 	var m map[string]interface{}
@@ -577,11 +577,15 @@ func (d *Datastore) GetActivityByActivityID(ctx context.Context, activityID stri
 	if m == nil {
 		return nil, fmt.Errorf("unable to load activity with _id=%q", activityID)
 	}
-	activity, err := streams.ToType(ctx, m)
+	a, err := streams.ToType(ctx, m)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create JSON vocab.ActivityStreamsObject resolver: got err=%v", err)
 	}
-	return activity, nil
+	switch a.(type) {
+	case activity.Activity:
+		return a.(activity.Activity), nil
+	}
+	return nil, fmt.Errorf("activity retrieved is invalid: got=%v", a)
 }
 
 func (d *Datastore) AddActivityToOutbox(ctx context.Context, activity vocab.Type, username string) error {

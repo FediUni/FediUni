@@ -86,7 +86,7 @@ func (d *TestDatastore) GetActivityByObjectID(_ context.Context, objectID string
 	return activity, nil
 }
 
-func (d *TestDatastore) GetActivityByActivityID(_ context.Context, _ string) (vocab.Type, error) {
+func (d *TestDatastore) GetActivityByActivityID(_ context.Context, _ string) (activity.Activity, error) {
 	return nil, fmt.Errorf("GetActivityByObjectID() is unimplemented")
 }
 
@@ -164,7 +164,7 @@ func (c *TestClient) FetchRemoteActor(_ context.Context, identifier string) (act
 	return a, nil
 }
 
-func (c *TestClient) FetchRemoteObject(_ context.Context, id *url.URL, _ bool, _ int, _ int) (vocab.Type, error) {
+func (c *TestClient) FetchObject(_ context.Context, id *url.URL, _ bool, _ int, _ int) (vocab.Type, error) {
 	a := c.knownActivities[id.String()]
 	if a == nil {
 		return nil, fmt.Errorf("failed to fetch activity ID=%q", id)
