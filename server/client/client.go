@@ -195,6 +195,14 @@ func (c *Client) FetchObject(ctx context.Context, iri *url.URL, forceUpdate bool
 		if err := c.Announce(ctx, announce, depth, maxDepth); err != nil {
 			return nil, err
 		}
+	case "Note":
+		note, err := object.ParseNote(ctx, o)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.Note(ctx, note, depth, maxDepth); err != nil {
+			return nil, err
+		}
 	}
 	log.Infof("Returning Object of Type=%q", typeName)
 	return o, nil
@@ -482,6 +490,36 @@ func (c *Client) DereferenceAttributedTo(ctx context.Context, attributedTo vocab
 	return nil
 }
 
+// DereferenceInReplyTo fetches the actors or objects in inReplyTo field.
+func (c *Client) DereferenceInReplyTo(ctx context.Context, inReplyTo vocab.ActivityStreamsInReplyToProperty, depth, maxDepth int) error {
+	if inReplyTo == nil {
+		return fmt.Errorf("cannot dereference inReplyTo field: got inReplyTo=%v", inReplyTo)
+	}
+	for iter := inReplyTo.Begin(); iter != inReplyTo.End(); iter = iter.Next() {
+		if !iter.IsIRI() {
+			log.Infof("inReplyTo object is not an IRI: skipping...")
+			continue
+		}
+		objectID := iter.GetIRI()
+		objectRetrieved, err := c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
+		if err != nil {
+			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
+		}
+		switch objectRetrieved.GetTypeName() {
+		case "Note":
+			note, err := object.ParseNote(ctx, objectRetrieved)
+			if err != nil {
+				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", objectID.String(), err)
+			}
+			if err := c.Note(ctx, note, depth+1, maxDepth); err != nil {
+				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", objectID.String(), err)
+			}
+			iter.SetActivityStreamsNote(note)
+		}
+	}
+	return nil
+}
+
 // Create dereferences the actor and object fields of the activity.
 func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate, depth int, maxDepth int) error {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
@@ -619,6 +657,11 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 	if depth == maxDepth-1 {
 		log.Infof("%s Skipping replies to Note ID=%q", prefix, noteID.String())
 		return nil
+	}
+	log.Infof("%s Attempting to dereference inReplyTo on Note ID=%q", prefix, noteID.String())
+	inReplyTo := note.GetActivityStreamsInReplyTo()
+	if err := c.DereferenceInReplyTo(ctx, inReplyTo, depth, maxDepth); err != nil {
+		log.Errorf("%s Failed to dereference inReplyTo: got err=%v", err)
 	}
 	log.Infof("%s Attempting to dereference replies on Note ID=%q", prefix, noteID.String())
 	replies := note.GetActivityStreamsReplies()
