@@ -195,6 +195,14 @@ func (c *Client) FetchObject(ctx context.Context, iri *url.URL, forceUpdate bool
 		if err := c.Announce(ctx, announce, depth, maxDepth); err != nil {
 			return nil, err
 		}
+	case "Invite":
+		invite, err := activity.ParseInviteActivity(ctx, o)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.Invite(ctx, invite, depth, maxDepth); err != nil {
+			return nil, err
+		}
 	case "Note":
 		note, err := object.ParseNote(ctx, o)
 		if err != nil {
@@ -575,17 +583,25 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 		log.Errorf("%s Failed to dereference actors: got err=%v", prefix, err)
 	}
 	for iter := announce.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
-		if !iter.IsIRI() {
-			continue
+		var o vocab.Type
+		var err error
+		switch {
+		case iter.IsIRI():
+			objectID := iter.GetIRI()
+			o, err = c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
+			if err != nil {
+				return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
+			}
+			log.Infof("%s Announce Activity contains an Object ID=%q", prefix, objectID.String())
+		case iter.HasAny():
+			o = iter.GetType()
+		default:
+			return fmt.Errorf("%s Announce Activity does not contain object: got=%v", prefix, iter)
 		}
-		objectID := iter.GetIRI()
-		objectRetrieved, err := c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
-		if err != nil {
-			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
-		}
-		switch objectRetrieved.GetTypeName() {
+		objectID := o.GetJSONLDId().Get()
+		switch o.GetTypeName() {
 		case "Note":
-			note, err := object.ParseNote(ctx, objectRetrieved)
+			note, err := object.ParseNote(ctx, o)
 			if err != nil {
 				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", objectID.String(), err)
 			}
@@ -594,7 +610,7 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 			}
 			iter.SetActivityStreamsNote(note)
 		case "Create":
-			create, err := activity.ParseCreateActivity(ctx, objectRetrieved)
+			create, err := activity.ParseCreateActivity(ctx, o)
 			if err != nil {
 				return fmt.Errorf("failed to parse Activity ID=%q as Create: got err=%v", objectID.String(), err)
 			}
@@ -618,22 +634,30 @@ func (c *Client) Invite(ctx context.Context, invite vocab.ActivityStreamsInvite,
 		log.Errorf("%s Failed to dereference actors: got err=%v", prefix, err)
 	}
 	for iter := invite.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
-		if !iter.IsIRI() {
-			continue
+		var o vocab.Type
+		var err error
+		switch {
+		case iter.IsIRI():
+			objectID := iter.GetIRI()
+			o, err = c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
+			if err != nil {
+				return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
+			}
+			log.Infof("%s Invite Activity contains a Object ID=%q", prefix, objectID.String())
+		case iter.HasAny():
+			o = iter.GetType()
+		default:
+			return fmt.Errorf("%s Invite Activity does not contain object: got=%v", prefix, iter)
 		}
-		objectID := iter.GetIRI()
-		objectRetrieved, err := c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
-		if err != nil {
-			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
-		}
-		switch objectRetrieved.GetTypeName() {
+		objectID := o.GetJSONLDId().Get()
+		switch o.GetTypeName() {
 		case "Event":
-			event, err := object.ParseEvent(ctx, objectRetrieved)
+			event, err := object.ParseEvent(ctx, o)
 			if err != nil {
 				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", objectID.String(), err)
 			}
 			if err := c.Event(ctx, event, depth+1, maxDepth); err != nil {
-				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", objectID.String(), err)
+				return fmt.Errorf("failed to dereference Object ID=%q: got err=%v", objectID.String(), err)
 			}
 			iter.SetActivityStreamsEvent(event)
 		}
