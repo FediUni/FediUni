@@ -1071,8 +1071,8 @@ func (d *Datastore) GetEventInbox(ctx context.Context, username, minID, maxID st
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
 	}
-	filter := bson.A{
-		"$and", bson.D{
+	filter := bson.M{
+		"$and": bson.D{
 			{"recipient", strings.ToLower(username)},
 			{"type", "Invite"},
 			{"object.startTime", bson.M{"$gte": time.Now().String()}},
