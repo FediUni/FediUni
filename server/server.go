@@ -776,7 +776,7 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 		log.Infof("Fetching replies on Activity ID=%q", activityID.String())
 		maxDepth += 2
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, activityID, true, 0, maxDepth)
+	object, err := s.Client.FetchRemoteObject(ctx, activityID, false, 0, maxDepth)
 	if err != nil {
 		log.Errorf("Failed to retrieve object ID=%q: got err=%v", activityID, err)
 		http.Error(w, "Failed to retrieve activity", http.StatusNotFound)
