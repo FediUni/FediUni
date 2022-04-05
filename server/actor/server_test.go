@@ -12,6 +12,7 @@ import (
 )
 
 type testDatastore struct {
+	Datastore
 	Actors  map[string]vocab.ActivityStreamsPerson
 	Objects map[string]vocab.Type
 }

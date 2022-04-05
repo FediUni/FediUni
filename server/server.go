@@ -61,6 +61,8 @@ type Datastore interface {
 	AddActivityToOutbox(context.Context, vocab.Type, string) error
 	GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetEventInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetEventInbox(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	AddActivityToPublicInbox(context.Context, vocab.Type, primitive.ObjectID, bool) error
 	GetPublicInbox(context.Context, string, string, bool, bool) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetPublicInboxAsOrderedCollection(context.Context, bool, bool) (vocab.ActivityStreamsOrderedCollection, error)
@@ -471,6 +473,7 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	}
 	page := strings.ToLower(r.URL.Query().Get("page")) == "true"
 	local := strings.ToLower(r.URL.Query().Get("local")) == "true"
+	events := strings.ToLower(r.URL.Query().Get("events")) == "true"
 	maxID := r.URL.Query().Get("max_id")
 	if maxID == "" {
 		maxID = "0"
@@ -482,19 +485,39 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 	var inbox vocab.Type
 	if !page {
 		log.Infoln("Getting Inbox as OrderedCollection")
-		inbox, err = s.Actor.GetInboxAsOrderedCollection(ctx, username, local)
-		if err != nil {
-			log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
-			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-			return
+		if events {
+			log.Infof("Getting Events from Inbox as OrderedCollection")
+			inbox, err = s.Actor.GetEventInboxAsOrderedCollection(ctx, username)
+			if err != nil {
+				log.Errorf("Failed to read from Event Inbox of Username=%q: got err=%v", username, err)
+				http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			inbox, err = s.Actor.GetInboxAsOrderedCollection(ctx, username, local)
+			if err != nil {
+				log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
+				http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+				return
+			}
 		}
 	} else {
 		log.Infoln("Getting Inbox as OrderedCollectionPage")
-		inbox, err = s.Actor.GetInboxPage(ctx, username, minID, maxID, local)
-		if err != nil {
-			log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
-			http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
-			return
+		if events {
+			log.Infof("Getting Events from Inbox as OrderedCollectionPage")
+			inbox, err = s.Actor.GetEventInboxAsOrderedCollection(ctx, username)
+			if err != nil {
+				log.Errorf("Failed to read from Event Inbox of Username=%q: got err=%v", username, err)
+				http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			inbox, err = s.Actor.GetInboxPage(ctx, username, minID, maxID, local)
+			if err != nil {
+				log.Errorf("Failed to read from Inbox of Username=%q: got err=%v", username, err)
+				http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 	m, err := activity.JSON(inbox)
