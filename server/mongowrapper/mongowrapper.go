@@ -1071,7 +1071,7 @@ func (d *Datastore) GetEventInbox(ctx context.Context, username, minID, maxID st
 	}
 	filter := bson.M{
 		"recipient":        strings.ToLower(username),
-		"type":             "Event",
+		"type":             "Invite",
 		"object.startTime": bson.M{"$gte": time.Now().String()},
 	}
 	opts := options.Find().SetSort(bson.D{{"object.startTime", 1}}).SetLimit(20)
