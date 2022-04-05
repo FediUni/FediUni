@@ -492,6 +492,7 @@ func (c *Client) DereferenceAttributedTo(ctx context.Context, attributedTo vocab
 
 // DereferenceInReplyTo fetches the actors or objects in inReplyTo field.
 func (c *Client) DereferenceInReplyTo(ctx context.Context, inReplyTo vocab.ActivityStreamsInReplyToProperty, depth, maxDepth int) error {
+	log.Infoln("Dereferencing inReplyTo field")
 	if inReplyTo == nil {
 		return fmt.Errorf("cannot dereference inReplyTo field: got inReplyTo=%v", inReplyTo)
 	}
@@ -531,22 +532,31 @@ func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate,
 		log.Errorf("%s Failed to dereference actors: got err=%v", prefix, err)
 	}
 	for iter := create.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
-		if !iter.IsIRI() {
-			continue
-		}
-		objectID := iter.GetIRI()
-		objectRetrieved, err := c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
-		if err != nil {
-			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
-		}
-		switch objectRetrieved.GetTypeName() {
-		case "Note":
-			note, err := object.ParseNote(ctx, objectRetrieved)
+		var o vocab.Type
+		var err error
+		switch {
+		case iter.IsIRI():
+			objectID := iter.GetIRI()
+			o, err = c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
 			if err != nil {
-				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", objectID.String(), err)
+				return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
+			}
+			log.Infof("%s Create Activity contains a Note ID=%q", prefix, objectID.String())
+		case iter.HasAny():
+			o = iter.GetType()
+		default:
+			return fmt.Errorf("%s Create Activity does not contain object: got=%v", prefix, iter)
+		}
+		noteID := o.GetJSONLDId().Get()
+		log.Infof("%s Create Activity contains a Note ID=%q", prefix, noteID.String())
+		switch o.GetTypeName() {
+		case "Note":
+			note, err := object.ParseNote(ctx, o)
+			if err != nil {
+				return fmt.Errorf("failed to parse Object ID=%q as Note: got err=%v", noteID.String(), err)
 			}
 			if err := c.Note(ctx, note, depth+1, maxDepth); err != nil {
-				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", objectID.String(), err)
+				return fmt.Errorf("failed to dereference Note ID=%q: got err=%v", noteID.String(), err)
 			}
 			iter.SetActivityStreamsNote(note)
 		}
@@ -647,10 +657,12 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 	if noteID == nil {
 		return fmt.Errorf("%s failed to dereference Note: got Note ID=%v", prefix, noteID)
 	}
+	log.Infof("%s Dereferencing Note ID=%q", prefix, noteID.String())
 	if depth > maxDepth {
 		log.Infof("%s Skipping dereferencing Note Object ID=%q", prefix, noteID.String())
 		return nil
 	}
+	log.Infof("%s Attempting to dereference replies to Note ID=%q", prefix, noteID.String())
 	if err := c.DereferenceAttributedTo(ctx, note.GetActivityStreamsAttributedTo(), depth, maxDepth); err != nil {
 		log.Errorf("%s failed to dereference AttributeTo on NoteID=%q: got err=%v", prefix, noteID.String(), err)
 	}

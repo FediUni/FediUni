@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
+	log "github.com/golang/glog"
 	"net/url"
 )
 
@@ -43,6 +44,7 @@ func ParseNote(ctx context.Context, object vocab.Type) (vocab.ActivityStreamsNot
 	if err := noteResolver.Resolve(ctx, object); err != nil {
 		return nil, err
 	}
+	log.Infoln("Successfully parsed Note Object")
 	return note, nil
 }
 
