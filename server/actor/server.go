@@ -42,7 +42,7 @@ type Datastore interface {
 }
 type Client interface {
 	FetchRemoteActor(context.Context, string) (Actor, error)
-	FetchRemoteObject(context.Context, *url.URL, bool, int, int) (vocab.Type, error)
+	FetchObject(context.Context, *url.URL, bool, int, int) (vocab.Type, error)
 	DereferenceFollowers(context.Context, vocab.ActivityStreamsFollowersProperty, int, int) error
 	DereferenceFollowing(context.Context, vocab.ActivityStreamsFollowingProperty, int, int) error
 	DereferenceOutbox(context.Context, vocab.ActivityStreamsOutboxProperty, int, int) error
@@ -231,7 +231,7 @@ func (s *Server) GetAnyOutbox(ctx context.Context, identifier string, page int) 
 		return nil, fmt.Errorf("failed to load Outbox URL: got=%v", outboxIRI)
 	}
 	log.Infof("Fetching Outbox Collection of Actor ID=%q", personID.String())
-	o, err := s.Client.FetchRemoteObject(ctx, outboxIRI, false, 0, 1)
+	o, err := s.Client.FetchObject(ctx, outboxIRI, false, 0, 1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch Outbox Collection: got err=%v", err)
 	}

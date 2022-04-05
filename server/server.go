@@ -43,7 +43,7 @@ import (
 type Datastore interface {
 	GetActorByUsername(context.Context, string) (vocab.ActivityStreamsPerson, error)
 	GetActivityByObjectID(context.Context, string, string) (activity.Activity, error)
-	GetActivityByActivityID(context.Context, string) (vocab.Type, error)
+	GetActivityByActivityID(context.Context, string) (activity.Activity, error)
 	GetFollowersByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	GetFollowingByUsername(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	GetFollowerStatus(context.Context, string, string) (int, error)
@@ -76,7 +76,7 @@ type Datastore interface {
 }
 
 type Client interface {
-	FetchRemoteObject(context.Context, *url.URL, bool, int, int) (vocab.Type, error)
+	FetchObject(context.Context, *url.URL, bool, int, int) (vocab.Type, error)
 	FetchRemoteActor(ctx context.Context, s string) (actor.Actor, error)
 	DereferenceFollowers(ctx context.Context, property vocab.ActivityStreamsFollowersProperty, i int, i2 int) error
 	DereferenceFollowing(ctx context.Context, property vocab.ActivityStreamsFollowingProperty, i int, i2 int) error
@@ -776,7 +776,7 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 		log.Infof("Fetching replies on Activity ID=%q", activityID.String())
 		maxDepth += 2
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, activityID, false, 0, maxDepth)
+	object, err := s.Client.FetchObject(ctx, activityID, false, 0, maxDepth)
 	if err != nil {
 		log.Errorf("Failed to retrieve object ID=%q: got err=%v", activityID, err)
 		http.Error(w, "Failed to retrieve activity", http.StatusNotFound)
@@ -1591,7 +1591,7 @@ func (s *Server) handleAnnounceRequest(ctx context.Context, activityRequest voca
 	for iter := announce.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
 		switch {
 		case iter.IsIRI():
-			o, err := s.Client.FetchRemoteObject(ctx, iter.GetIRI(), false, 0, 2)
+			o, err := s.Client.FetchObject(ctx, iter.GetIRI(), false, 0, 2)
 			if err != nil {
 				return err
 			}
@@ -1692,7 +1692,7 @@ func (s *Server) handleFollowRequest(ctx context.Context, activityRequest vocab.
 	if err := s.Datastore.AddActivityToActivities(ctx, accept, primitive.NewObjectID()); err != nil {
 		return fmt.Errorf("failed to add activity to collection: got err=%v", err)
 	}
-	object, err := s.Client.FetchRemoteObject(ctx, followerID, false, 0, 2)
+	object, err := s.Client.FetchObject(ctx, followerID, false, 0, 2)
 	if err != nil {
 		return err
 	}

@@ -6,6 +6,9 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"github.com/FediUni/FediUni/server/actor"
+	"github.com/FediUni/FediUni/server/object"
+	"github.com/FediUni/FediUni/server/validation"
 	"github.com/go-fed/activity/pub"
 	"golang.org/x/sync/errgroup"
 	"io/ioutil"
@@ -17,9 +20,6 @@ import (
 	"time"
 
 	"github.com/FediUni/FediUni/server/activity"
-	"github.com/FediUni/FediUni/server/actor"
-	"github.com/FediUni/FediUni/server/object"
-	"github.com/FediUni/FediUni/server/validation"
 	"github.com/go-fed/activity/streams"
 	"github.com/go-fed/activity/streams/vocab"
 	"github.com/go-redis/redis"
@@ -54,10 +54,16 @@ type Cache interface {
 	Load(string) ([]byte, error)
 }
 
+type Datastore interface {
+	GetActivityByActivityID(context.Context, string) (activity.Activity, error)
+	GetActorByActorID(context.Context, string) (actor.Person, error)
+}
+
 type Client struct {
 	InstanceURL *url.URL
 	Cache       Cache
 	Client      *http.Client
+	datastore   Datastore
 }
 
 // RedisCache wraps a Redis Client to implement the Cache interface.
@@ -80,7 +86,7 @@ func (c *RedisCache) Load(key string) ([]byte, error) {
 }
 
 // NewClient initializes a client to retrieve and cache ActivityPub objects.
-func NewClient(instance *url.URL, address string, password string) *Client {
+func NewClient(instance *url.URL, address string, password string, datastore Datastore) *Client {
 	return &Client{
 		InstanceURL: instance,
 		Client:      &http.Client{},
@@ -90,12 +96,13 @@ func NewClient(instance *url.URL, address string, password string) *Client {
 				Password: password,
 			}),
 		},
+		datastore: datastore,
 	}
 }
 
-// FetchRemoteObject retrieves the resource located at the provided IRI.
+// FetchObject retrieves the resource located at the provided IRI.
 // The client makes use of caching but this can be overridden.
-func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdate bool, depth int, maxDepth int) (vocab.Type, error) {
+func (c *Client) FetchObject(ctx context.Context, iri *url.URL, forceUpdate bool, depth int, maxDepth int) (vocab.Type, error) {
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if iri == nil {
 		return nil, fmt.Errorf("failed to receive IRI: got=%v", iri)
@@ -103,10 +110,42 @@ func (c *Client) FetchRemoteObject(ctx context.Context, iri *url.URL, forceUpdat
 	var marshalledObject []byte
 	var err error
 	if !forceUpdate {
-		log.Infof("%s Reading ObjectID=%q from cache...", prefix, iri.String())
-		marshalledObject, err = c.Cache.Load(iri.String())
-		if err != nil {
-			log.Errorf("%s Redis failed to load ObjectID=%q from cache: got err=%v", prefix, iri.String(), err)
+		if iri.Host == c.InstanceURL.Host {
+			log.Infof("%s Reading ObjectID=%q from datastore...", prefix, iri.String())
+			var o vocab.Type
+			switch {
+			case strings.Contains(iri.String(), "activity"):
+				a, err := c.datastore.GetActivityByActivityID(ctx, iri.String())
+				if err != nil {
+					log.Errorf("%s Failed to load Activity ID=%q: got err=%v", prefix, iri.String(), err)
+					break
+				}
+				if strings.HasSuffix(iri.String(), "/object") {
+					objects := a.GetActivityStreamsObject()
+					for iter := objects.Begin(); iter != objects.End(); iter = iter.Next() {
+						if iter.HasAny() {
+							o = iter.GetActivityStreamsObject()
+						}
+					}
+				} else {
+					o = a
+				}
+			case strings.Contains(iri.String(), "actor"):
+				o, err = c.datastore.GetActorByActorID(ctx, iri.String())
+				if err != nil {
+					log.Errorf("%s Failed to load Activity ID=%q: got err=%v", prefix, iri.String(), err)
+				}
+			}
+			marshalledObject, err = activity.JSON(o)
+			if err != nil {
+				log.Errorf("%s failed to serialize Activity ID=%q: got err=%v", prefix, iri.String(), err)
+			}
+		} else {
+			log.Infof("%s Reading ObjectID=%q from cache...", prefix, iri.String())
+			marshalledObject, err = c.Cache.Load(iri.String())
+			if err != nil {
+				log.Errorf("%s Redis failed to load ObjectID=%q from cache: got err=%v", prefix, iri.String(), err)
+			}
 		}
 	}
 	if len(marshalledObject) == 0 {
@@ -203,7 +242,7 @@ func (c *Client) FetchRemotePerson(ctx context.Context, identifier string) (voca
 
 // FetchRemotePersonWithID uses the provided ID to retrieve a Person.
 func (c *Client) FetchRemotePersonWithID(ctx context.Context, personID *url.URL) (vocab.ActivityStreamsPerson, error) {
-	a, err := c.FetchRemoteObject(ctx, personID, false, 0, 1)
+	a, err := c.FetchObject(ctx, personID, false, 0, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +255,7 @@ func (c *Client) FetchRemoteActor(ctx context.Context, identifier string) (actor
 	if err != nil {
 		return nil, err
 	}
-	o, err := c.FetchRemoteObject(ctx, actorID, false, 0, 1)
+	o, err := c.FetchObject(ctx, actorID, false, 0, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +276,7 @@ func (c *Client) FetchFollowers(ctx context.Context, identifier string) ([]vocab
 	var followers vocab.Type
 	switch f := person.GetActivityStreamsFollowers(); {
 	case f.IsIRI():
-		followers, err = c.FetchRemoteObject(ctx, f.GetIRI(), false, 0, 1)
+		followers, err = c.FetchObject(ctx, f.GetIRI(), false, 0, 1)
 		if err != nil {
 			return nil, err
 		}
@@ -398,7 +437,7 @@ func (c *Client) DereferenceActor(ctx context.Context, actor vocab.ActivityStrea
 		default:
 			return fmt.Errorf("failed to receive any Object")
 		}
-		a, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, maxDepth)
+		a, err := c.FetchObject(ctx, actorID, false, depth+1, maxDepth)
 		if err != nil {
 			return fmt.Errorf("failed to fetch remote Object with ID=%q", actorID.String())
 		}
@@ -432,7 +471,7 @@ func (c *Client) DereferenceAttributedTo(ctx context.Context, attributedTo vocab
 		default:
 			return fmt.Errorf("failed to receive any Object")
 		}
-		a, err := c.FetchRemoteObject(ctx, actorID, false, depth+1, maxDepth)
+		a, err := c.FetchObject(ctx, actorID, false, depth+1, maxDepth)
 		if err != nil {
 			return fmt.Errorf("failed to fetch remote Object with ID=%q", actorID.String())
 		}
@@ -458,7 +497,7 @@ func (c *Client) Create(ctx context.Context, create vocab.ActivityStreamsCreate,
 			continue
 		}
 		objectID := iter.GetIRI()
-		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false, depth+1, maxDepth)
+		objectRetrieved, err := c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
 		if err != nil {
 			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
 		}
@@ -492,7 +531,7 @@ func (c *Client) Announce(ctx context.Context, announce vocab.ActivityStreamsAnn
 			continue
 		}
 		objectID := iter.GetIRI()
-		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false, depth+1, maxDepth)
+		objectRetrieved, err := c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
 		if err != nil {
 			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
 		}
@@ -535,7 +574,7 @@ func (c *Client) Invite(ctx context.Context, invite vocab.ActivityStreamsInvite,
 			continue
 		}
 		objectID := iter.GetIRI()
-		objectRetrieved, err := c.FetchRemoteObject(ctx, objectID, false, depth+1, maxDepth)
+		objectRetrieved, err := c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
 		if err != nil {
 			return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
 		}
@@ -591,7 +630,7 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 	switch {
 	case replies.IsIRI():
 		repliesID := replies.GetIRI()
-		o, err := c.FetchRemoteObject(ctx, repliesID, false, depth+1, maxDepth)
+		o, err := c.FetchObject(ctx, repliesID, false, depth+1, maxDepth)
 		if err != nil {
 			return fmt.Errorf("%s Failed to fetch replies Collection ID=%q", prefix, repliesID.String())
 		}
@@ -676,7 +715,7 @@ func (c *Client) DereferenceObjectsInCollection(ctx context.Context, collection 
 	if first.IsIRI() {
 		firstID := first.GetIRI()
 		log.Infof("%s Dereferencing ID=%q of first field of Collection ID=%q", prefix, firstID.String(), collectionID.String())
-		page, err := c.FetchRemoteObject(ctx, firstID, false, depth+1, maxDepth)
+		page, err := c.FetchObject(ctx, firstID, false, depth+1, maxDepth)
 		if err != nil {
 			return nil, fmt.Errorf("%s failed to fetch first field of Collection: got err=%v", prefix, err)
 		}
@@ -700,7 +739,7 @@ func (c *Client) DereferenceObjectsInCollection(ctx context.Context, collection 
 		}
 		switch {
 		case current.IsIRI():
-			page, err := c.FetchRemoteObject(ctx, current.GetIRI(), false, depth+1, maxDepth)
+			page, err := c.FetchObject(ctx, current.GetIRI(), false, depth+1, maxDepth)
 			if err != nil {
 				return nil, fmt.Errorf("%s failed to fetch next page of items collection: got err=%v", prefix, err)
 			}
@@ -770,7 +809,7 @@ func (c *Client) DereferenceObjectsInOrderedCollection(ctx context.Context, coll
 	if first.IsIRI() {
 		firstID := first.GetIRI()
 		log.Infof("%s Dereferencing ID=%q of first field of OrderedCollection ID=%q", prefix, firstID.String(), collectionID.String())
-		page, err := c.FetchRemoteObject(ctx, firstID, false, depth+1, maxDepth)
+		page, err := c.FetchObject(ctx, firstID, false, depth+1, maxDepth)
 		if err != nil {
 			return nil, fmt.Errorf("%s failed to fetch first field of OrderedCollection: got err=%v", prefix, err)
 		}
@@ -794,7 +833,7 @@ func (c *Client) DereferenceObjectsInOrderedCollection(ctx context.Context, coll
 		}
 		switch {
 		case current.IsIRI():
-			page, err := c.FetchRemoteObject(ctx, current.GetIRI(), false, depth+1, maxDepth)
+			page, err := c.FetchObject(ctx, current.GetIRI(), false, depth+1, maxDepth)
 			if err != nil {
 				return nil, fmt.Errorf("%s failed to fetch next page of OrderedItems: got err=%v", prefix, err)
 			}
@@ -843,7 +882,7 @@ func (c *Client) DereferenceOutbox(ctx context.Context, outbox vocab.ActivityStr
 			log.Errorf("unexpected IRI in Outbox Field: got Object ID=%v", outboxID)
 			break
 		}
-		a, err := c.FetchRemoteObject(ctx, outboxID, false, depth+1, maxDepth)
+		a, err := c.FetchObject(ctx, outboxID, false, depth+1, maxDepth)
 		if err != nil {
 			log.Errorf("failed to fetch remote Object with ID=%q", outboxID.String())
 			break
@@ -869,7 +908,7 @@ func (c *Client) DereferenceFollowing(ctx context.Context, following vocab.Activ
 			log.Errorf("unexpected IRI in Following Field: got Object ID=%v", followingID)
 			break
 		}
-		a, err := c.FetchRemoteObject(ctx, followingID, false, depth+1, maxDepth)
+		a, err := c.FetchObject(ctx, followingID, false, depth+1, maxDepth)
 		if err != nil {
 			log.Errorf("failed to fetch remote Object with ID=%q", followingID.String())
 			break
@@ -895,7 +934,7 @@ func (c *Client) DereferenceFollowers(ctx context.Context, followers vocab.Activ
 			log.Errorf("unexpected IRI in Followers Field: got Object ID=%v", followersID)
 			break
 		}
-		a, err := c.FetchRemoteObject(ctx, followersID, false, depth+1, maxDepth)
+		a, err := c.FetchObject(ctx, followersID, false, depth+1, maxDepth)
 		if err != nil {
 			log.Errorf("failed to fetch remote Object with ID=%q", followersID.String())
 			break
@@ -945,7 +984,7 @@ func (c *Client) DereferenceItems(ctx context.Context, items vocab.ActivityStrea
 				<-sem
 			}()
 			sem <- struct{}{}
-			item, err := c.FetchRemoteObject(ctx, itemID, false, depth+1, maxDepth)
+			item, err := c.FetchObject(ctx, itemID, false, depth+1, maxDepth)
 			if err != nil {
 				return fmt.Errorf("%s Failed to fetch object ID=%q", prefix, itemID.String())
 			}
@@ -1015,7 +1054,7 @@ func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.Activi
 				<-sem
 			}()
 			sem <- struct{}{}
-			item, err := c.FetchRemoteObject(ctx, itemID, false, depth+1, maxDepth)
+			item, err := c.FetchObject(ctx, itemID, false, depth+1, maxDepth)
 			if err != nil {
 				return fmt.Errorf("%s Failed to fetch object ID=%q", prefix, itemID.String())
 			}
@@ -1098,7 +1137,7 @@ func (c *Client) FetchRecipients(ctx context.Context, a activity.Activity) ([]*u
 			var o vocab.Type
 			var err error
 			if iter.IsIRI() {
-				o, err = c.FetchRemoteObject(ctx, iter.GetIRI(), true, 0, 1)
+				o, err = c.FetchObject(ctx, iter.GetIRI(), true, 0, 1)
 				if err != nil {
 					log.Errorf("Failed to fetch remote Object: got err=%v", err)
 					continue
@@ -1172,7 +1211,7 @@ func (c *Client) FetchRecipients(ctx context.Context, a activity.Activity) ([]*u
 			var o vocab.Type
 			var err error
 			if iter.IsIRI() {
-				o, err = c.FetchRemoteObject(ctx, iter.GetIRI(), true, 0, 1)
+				o, err = c.FetchObject(ctx, iter.GetIRI(), true, 0, 1)
 				if err != nil {
 					log.Errorf("Failed to fetch remote Object: got err=%v", err)
 					continue
@@ -1252,7 +1291,7 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 			var o vocab.Type
 			var err error
 			if iter.IsIRI() {
-				o, err = c.FetchRemoteObject(ctx, iter.GetIRI(), true, 0, 1)
+				o, err = c.FetchObject(ctx, iter.GetIRI(), true, 0, 1)
 				if err != nil {
 					log.Errorf("Failed to fetch remote Object: got err=%v", err)
 					continue
@@ -1353,7 +1392,7 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 		for iter := cc.Begin(); iter != cc.End(); iter = iter.Next() {
 			switch {
 			case iter.IsIRI():
-				o, err := c.FetchRemoteObject(ctx, iter.GetIRI(), true, 0, 1)
+				o, err := c.FetchObject(ctx, iter.GetIRI(), true, 0, 1)
 				if err != nil {
 					log.Errorf("Failed to fetch remote Object: got err=%v", err)
 					continue
@@ -1378,7 +1417,7 @@ func (c *Client) DereferenceRecipientInboxes(ctx context.Context, a activity.Act
 						var item vocab.Type
 						switch {
 						case iter.IsIRI():
-							item, err = c.FetchRemoteObject(ctx, iter.GetIRI(), false, 0, 0)
+							item, err = c.FetchObject(ctx, iter.GetIRI(), false, 0, 0)
 							if err != nil {
 								log.Errorf("Failed to fetch remote actor: got err=%v", err)
 							}

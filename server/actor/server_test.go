@@ -115,7 +115,7 @@ func (c testClient) FetchRemoteActor(ctx context.Context, identifier string) (Ac
 	return actor, nil
 }
 
-func (c testClient) FetchRemoteObject(ctx context.Context, objectID *url.URL, b bool, i int, i2 int) (vocab.Type, error) {
+func (c testClient) FetchObject(ctx context.Context, objectID *url.URL, b bool, i int, i2 int) (vocab.Type, error) {
 	object := c.Objects[objectID.String()]
 	if object == nil {
 		return nil, fmt.Errorf("failed to load object ID=%q: got=%v", objectID.String(), object)

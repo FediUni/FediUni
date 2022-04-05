@@ -61,7 +61,7 @@ func main() {
 		log.Fatalln(err)
 	}
 	redisAddress := "redis:6379"
-	httpClient := client.NewClient(url, redisAddress, viper.GetString("REDIS_PASSWORD"))
+	httpClient := client.NewClient(url, redisAddress, viper.GetString("REDIS_PASSWORD"), datastore)
 	s, err := server.New(url, datastore, httpClient, actor.NewRSAKeyGenerator(), viper.GetString("SECRET"), redisAddress)
 	if err != nil {
 		log.Fatalf("failed to create service: got err=%v", err)
