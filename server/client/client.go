@@ -661,7 +661,7 @@ func (c *Client) Note(ctx context.Context, note vocab.ActivityStreamsNote, depth
 	log.Infof("%s Attempting to dereference inReplyTo on Note ID=%q", prefix, noteID.String())
 	inReplyTo := note.GetActivityStreamsInReplyTo()
 	if err := c.DereferenceInReplyTo(ctx, inReplyTo, depth, maxDepth); err != nil {
-		log.Errorf("%s Failed to dereference inReplyTo: got err=%v", err)
+		log.Errorf("%s Failed to dereference inReplyTo: got err=%v", prefix, err)
 	}
 	log.Infof("%s Attempting to dereference replies on Note ID=%q", prefix, noteID.String())
 	replies := note.GetActivityStreamsReplies()
