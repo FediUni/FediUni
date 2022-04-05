@@ -1252,8 +1252,6 @@ func (s *Server) postActorOutbox(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.Datastore.AddActivityToPublicInbox(ctx, toDeliver, primitive.NewObjectID(), isReply); err != nil {
 		log.Errorf("failed to add activity to public inbox: got err=%v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
 	}
 	w.WriteHeader(http.StatusOK)
 }
