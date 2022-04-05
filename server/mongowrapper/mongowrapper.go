@@ -1022,10 +1022,12 @@ func (d *Datastore) GetActorInbox(ctx context.Context, username, minID, maxID st
 
 func (d *Datastore) GetEventInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
 	inbox := d.client.Database("FediUni").Collection("inbox")
-	filter := bson.D{
-		{"recipient", strings.ToLower(username)},
-		{"type", "Event"},
-		{"object.startTime", bson.M{"$gte": time.Now().String()}},
+	filter := bson.A{
+		"$and", bson.D{
+			{"recipient", strings.ToLower(username)},
+			{"type", "Invite"},
+			{"object.startTime", bson.M{"$gte": time.Now().String()}},
+		},
 	}
 	inboxCollection := streams.NewActivityStreamsOrderedCollection()
 	inboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/inbox", d.server.String(), username))
@@ -1069,10 +1071,12 @@ func (d *Datastore) GetEventInbox(ctx context.Context, username, minID, maxID st
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
 	}
-	filter := bson.M{
-		"recipient":        strings.ToLower(username),
-		"type":             "Invite",
-		"object.startTime": bson.M{"$gte": time.Now().String()},
+	filter := bson.A{
+		"$and", bson.D{
+			{"recipient", strings.ToLower(username)},
+			{"type", "Invite"},
+			{"object.startTime", bson.M{"$gte": time.Now().String()}},
+		},
 	}
 	opts := options.Find().SetSort(bson.D{{"object.startTime", 1}}).SetLimit(20)
 	idFilters := bson.M{}
