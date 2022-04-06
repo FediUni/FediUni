@@ -1020,6 +1020,8 @@ func (d *Datastore) GetActorInbox(ctx context.Context, username, minID, maxID st
 	return page, nil
 }
 
+// GetEventInboxAsOrderedCollection returns an OrderedCollection of invites.
+// This method returns events that have yet to take place.
 func (d *Datastore) GetEventInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
 	inbox := d.client.Database("FediUni").Collection("inbox")
 	filter := bson.M{
@@ -1148,6 +1150,149 @@ func (d *Datastore) GetEventInbox(ctx context.Context, username, minID, maxID st
 	page.SetActivityStreamsNext(next)
 	inboxIRI := streams.NewJSONLDIdProperty()
 	inboxID, err := url.Parse(fmt.Sprintf("%s?page=true&events=%t", inboxURL.String(), true))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse inbox ID: got err=%v", err)
+	}
+	inboxIRI.Set(inboxID)
+	page.SetActivityStreamsOrderedItems(orderedItems)
+	return page, nil
+}
+
+// GetNotificationsInboxAsOrderedCollection returns Likes and Invites.
+func (d *Datastore) GetNotificationsInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
+	inbox := d.client.Database("FediUni").Collection("inbox")
+	filter := bson.M{
+		"$and": bson.A{
+			bson.D{{"recipient", strings.ToLower(username)}},
+			bson.M{"$or": bson.A{
+				bson.D{{"type", "Invite"}},
+				bson.D{{"type", "Like"}},
+			}},
+			bson.M{"actor.id": bson.D{{"$ne", fmt.Sprintf("%s/api/actor/%s", d.server.String(), username)}}},
+		},
+	}
+	inboxCollection := streams.NewActivityStreamsOrderedCollection()
+	inboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/inbox", d.server.String(), username))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
+	}
+	id := streams.NewJSONLDIdProperty()
+	id.Set(inboxURL)
+	inboxCollection.SetJSONLDId(id)
+	inboxSize, err := inbox.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine inbox size: got err=%v", err)
+	}
+	totalItems := streams.NewActivityStreamsTotalItemsProperty()
+	totalItems.Set(int(inboxSize))
+	inboxCollection.SetActivityStreamsTotalItems(totalItems)
+	first := streams.NewActivityStreamsFirstProperty()
+	firstURL, err := url.Parse(fmt.Sprintf("%s?page=true&notifications=%t", inboxURL.String(), true))
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine first URL: got err=%v", err)
+	}
+	first.SetIRI(firstURL)
+	inboxCollection.SetActivityStreamsFirst(first)
+	last := streams.NewActivityStreamsLastProperty()
+	lastURL, err := url.Parse(fmt.Sprintf("%s?page=true&min_id=0&notifications=%t", inboxURL.String(), true))
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine last URL: got err=%v", err)
+	}
+	last.SetIRI(lastURL)
+	inboxCollection.SetActivityStreamsLast(last)
+	return inboxCollection, nil
+}
+
+// GetNotificationsInbox paginates the inbox 20 activities at a time using IDs.
+// ObjectIDs exceeding that maxID are ignored, and ObjectIDs under the min ID
+// are ignored.
+func (d *Datastore) GetNotificationsInbox(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	log.Infof("Searching for Recipient with Username=%q", username)
+	inbox := d.client.Database("FediUni").Collection("inbox")
+	inboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/inbox", d.server.String(), username))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
+	}
+	filter := bson.M{
+		"$and": bson.A{
+			bson.D{{"recipient", strings.ToLower(username)}},
+			bson.M{"$or": bson.A{
+				bson.D{{"type", "Invite"}},
+				bson.D{{"type", "Like"}},
+			}},
+			bson.M{"actor.id": bson.D{{"$ne", fmt.Sprintf("%s/api/actor/%s", d.server.String(), username)}}},
+		},
+	}
+	opts := options.Find().SetSort(bson.D{{"published", -1}}).SetLimit(20)
+	idFilters := bson.M{}
+	if minID != "0" {
+		id, err := primitive.ObjectIDFromHex(minID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse min_id: got err=%v", err)
+		}
+		idFilters["$gt"] = id
+	}
+	if maxID != "0" {
+		id, err := primitive.ObjectIDFromHex(maxID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse max_id: got err=%v", err)
+		}
+		idFilters["$lt"] = id
+	}
+	if len(idFilters) != 0 {
+		filter["_id"] = idFilters
+	}
+	cursor, err := inbox.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	page := streams.NewActivityStreamsOrderedCollectionPage()
+	orderedItems := streams.NewActivityStreamsOrderedItemsProperty()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new type resolver: got err=%v", err)
+	}
+	var firstID primitive.ObjectID
+	var lastID primitive.ObjectID
+	totalItems := 0
+	for cursor.Next(ctx) {
+		totalItems++
+		var m map[string]interface{}
+		if err := cursor.Decode(&m); err != nil {
+			return nil, err
+		}
+		if firstID.IsZero() {
+			firstID = m["_id"].(primitive.ObjectID)
+		}
+		activity, err := streams.ToType(ctx, m)
+		if err != nil {
+			return nil, err
+		}
+		if err := orderedItems.AppendType(activity); err != nil {
+			return nil, err
+		}
+		lastID = m["_id"].(primitive.ObjectID)
+	}
+	totalItemsProperty := streams.NewActivityStreamsTotalItemsProperty()
+	totalItemsProperty.Set(totalItems)
+	page.SetActivityStreamsTotalItems(totalItemsProperty)
+	previous := streams.NewActivityStreamsPrevProperty()
+	previousURL, err := url.Parse(fmt.Sprintf("%s?page=true&notifications=%t&min_id=%s&max_id=%d", inboxURL.String(), true, firstID.Hex(), 0))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse previous URL: got err=%v", err)
+	}
+	previous.SetIRI(previousURL)
+	page.SetActivityStreamsPrev(previous)
+	next := streams.NewActivityStreamsNextProperty()
+	nextURL, err := url.Parse(fmt.Sprintf("%s?page=true&notifications=%t&min_id=%d&max_id=%s", inboxURL.String(), true, 0, lastID.Hex()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse next URL: got err=%v", err)
+
+	}
+	next.SetIRI(nextURL)
+	page.SetActivityStreamsNext(next)
+	inboxIRI := streams.NewJSONLDIdProperty()
+	inboxID, err := url.Parse(fmt.Sprintf("%s?page=true&notifications=%t", inboxURL.String(), true))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse inbox ID: got err=%v", err)
 	}
