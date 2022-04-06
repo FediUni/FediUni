@@ -1224,6 +1224,15 @@ func (c *Client) DereferenceItem(ctx context.Context, item vocab.Type, depth int
 			return nil, fmt.Errorf("failed to parse Note ID=%q: got err=%v", noteID.String(), err)
 		}
 		return n, nil
+	case "Like":
+		like, err := activity.ParseLikeActivity(ctx, item)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.Like(ctx, like, depth, maxDepth); err != nil {
+			return nil, err
+		}
+		return like, err
 	default:
 		return nil, fmt.Errorf("failed to dereference unknown Item type")
 	}
