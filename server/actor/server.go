@@ -36,6 +36,8 @@ type Datastore interface {
 	GetPublicInboxAsOrderedCollection(context.Context, bool, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetEventInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetEventInbox(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetLikedAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
 	GetLikeStatus(context.Context, *url.URL, *url.URL) (bool, error)
 	UpdateActor(context.Context, string, string, string, vocab.ActivityStreamsImage) error
@@ -169,6 +171,14 @@ func (s *Server) GetInboxPage(ctx context.Context, username, minID, maxID string
 		return nil, fmt.Errorf("failed to dereference orderedItems in OrderedCollection: got err=%v", err)
 	}
 	return page, nil
+}
+
+func (s *Server) GetEventInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
+	return s.Datastore.GetEventInboxAsOrderedCollection(ctx, username)
+}
+
+func (s *Server) GetEventInboxPage(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	return s.Datastore.GetEventInbox(ctx, username, minID, maxID)
 }
 
 // GetPublicInboxAsOrderedCollection returns an OrderedCollection with IRIs.
