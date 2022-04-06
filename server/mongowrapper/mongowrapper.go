@@ -880,19 +880,23 @@ func (d *Datastore) GetActorOutbox(ctx context.Context, username, minID, maxID s
 
 func (d *Datastore) GetActorInboxAsOrderedCollection(ctx context.Context, username string, local bool) (vocab.ActivityStreamsOrderedCollection, error) {
 	inbox := d.client.Database("FediUni").Collection("inbox")
-	var filter bson.D
+	var filter bson.M
 	if local {
-		filter = bson.D{
-			{"recipient", strings.ToLower(username)},
-			{"isReply", false},
-			{"isLocal", local},
-			{"type", bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}}},
+		filter = bson.M{
+			"$and": bson.A{
+				bson.D{{"recipient", strings.ToLower(username)}},
+				bson.D{{"isReply", false}},
+				bson.D{{"isLocal", local}},
+				bson.D{{"type", bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}}}},
+			},
 		}
 	} else {
-		filter = bson.D{
-			{"recipient", strings.ToLower(username)},
-			{"isReply", false},
-			{"type", bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}}},
+		filter = bson.M{
+			"$and": bson.A{
+				bson.D{{"recipient", strings.ToLower(username)}},
+				bson.D{{"isReply", false}},
+				bson.D{{"type", bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}}}},
+			},
 		}
 	}
 	inboxCollection := streams.NewActivityStreamsOrderedCollection()
@@ -937,13 +941,24 @@ func (d *Datastore) GetActorInbox(ctx context.Context, username, minID, maxID st
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
 	}
-	filter := bson.M{
-		"recipient": strings.ToLower(username),
-		"isReply":   false,
-		"type":      bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}},
-	}
+	var filter bson.M
 	if local {
-		filter["isLocal"] = true
+		filter = bson.M{
+			"$and": bson.A{
+				bson.D{{"recipient", strings.ToLower(username)}},
+				bson.D{{"isReply", false}},
+				bson.D{{"isLocal", local}},
+				bson.D{{"type", bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}}}},
+			},
+		}
+	} else {
+		filter = bson.M{
+			"$and": bson.A{
+				bson.D{{"recipient", strings.ToLower(username)}},
+				bson.D{{"isReply", false}},
+				bson.D{{"type", bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}}}},
+			},
+		}
 	}
 	opts := options.Find().SetSort(bson.D{{"_id", -1}}).SetLimit(20)
 	idFilters := bson.M{}
@@ -1226,7 +1241,7 @@ func (d *Datastore) GetNotificationsInbox(ctx context.Context, username, minID, 
 			bson.M{"actor.id": bson.D{{"$ne", fmt.Sprintf("%s/api/actor/%s", d.server.String(), username)}}},
 		},
 	}
-	opts := options.Find().SetSort(bson.D{{"published", -1}}).SetLimit(20)
+	opts := options.Find().SetSort(bson.D{{"_id", -1}}).SetLimit(20)
 	idFilters := bson.M{}
 	if minID != "0" {
 		id, err := primitive.ObjectIDFromHex(minID)
