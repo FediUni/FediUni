@@ -203,6 +203,14 @@ func (c *Client) FetchObject(ctx context.Context, iri *url.URL, forceUpdate bool
 		if err := c.Invite(ctx, invite, depth, maxDepth); err != nil {
 			return nil, err
 		}
+	case "Like":
+		like, err := activity.ParseLikeActivity(ctx, o)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.Like(ctx, like, depth, maxDepth); err != nil {
+			return nil, err
+		}
 	case "Note":
 		note, err := object.ParseNote(ctx, o)
 		if err != nil {
@@ -661,6 +669,19 @@ func (c *Client) Invite(ctx context.Context, invite vocab.ActivityStreamsInvite,
 			}
 			iter.SetActivityStreamsEvent(event)
 		}
+	}
+	return nil
+}
+
+// Like dereferences the actor fields of the activity.
+func (c *Client) Like(ctx context.Context, invite vocab.ActivityStreamsLike, depth int, maxDepth int) error {
+	prefix := fmt.Sprintf("(Depth=%d)", depth)
+	if depth > maxDepth {
+		log.Infof("%s Skipping dereferencing Like Activity ID=%q", prefix, invite.GetJSONLDId().Get())
+		return nil
+	}
+	if err := c.DereferenceActor(ctx, invite.GetActivityStreamsActor(), depth, maxDepth); err != nil {
+		log.Errorf("%s Failed to dereference actors: got err=%v", prefix, err)
 	}
 	return nil
 }
