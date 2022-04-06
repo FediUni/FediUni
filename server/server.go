@@ -505,7 +505,7 @@ func (s *Server) getActorInbox(w http.ResponseWriter, r *http.Request) {
 		log.Infoln("Getting Inbox as OrderedCollectionPage")
 		if events {
 			log.Infof("Getting Events from Inbox as OrderedCollectionPage")
-			inbox, err = s.Actor.GetEventInboxAsOrderedCollection(ctx, username)
+			inbox, err = s.Actor.GetEventInboxPage(ctx, username, minID, maxID)
 			if err != nil {
 				log.Errorf("Failed to read from Event Inbox of Username=%q: got err=%v", username, err)
 				http.Error(w, fmt.Sprintf("failed to load actor inbox"), http.StatusInternalServerError)
