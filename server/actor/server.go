@@ -36,6 +36,8 @@ type Datastore interface {
 	GetPublicInboxAsOrderedCollection(context.Context, bool, bool) (vocab.ActivityStreamsOrderedCollection, error)
 	GetActorOutbox(context.Context, string, string, string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetActorOutboxAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
+	GetNotificationsInbox(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error)
+	GetNotificationsInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error)
 	GetEventInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error)
 	GetEventInbox(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error)
 	GetLikedAsOrderedCollection(context.Context, string) (vocab.ActivityStreamsOrderedCollection, error)
@@ -179,6 +181,14 @@ func (s *Server) GetEventInboxAsOrderedCollection(ctx context.Context, username 
 
 func (s *Server) GetEventInboxPage(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
 	return s.Datastore.GetEventInbox(ctx, username, minID, maxID)
+}
+
+func (s *Server) GetNotificationsInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
+	return s.Datastore.GetNotificationsInboxAsOrderedCollection(ctx, username)
+}
+
+func (s *Server) GetNotificationsInboxPage(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
+	return s.Datastore.GetNotificationsInbox(ctx, username, minID, maxID)
 }
 
 // GetPublicInboxAsOrderedCollection returns an OrderedCollection with IRIs.
