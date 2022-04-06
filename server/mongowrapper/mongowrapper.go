@@ -752,7 +752,7 @@ func (d *Datastore) GetActorOutboxAsOrderedCollection(ctx context.Context, usern
 	filter := bson.M{
 		"$and": bson.A{
 			bson.D{{"sender", username}},
-			bson.D{{"type", bson.D{{"$in", bson.A{"Create", "Announce"}}}}},
+			bson.D{{"type", bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}}}},
 		},
 	}
 	outboxCollection := streams.NewActivityStreamsOrderedCollection()
@@ -796,7 +796,7 @@ func (d *Datastore) GetActorOutbox(ctx context.Context, username, minID, maxID s
 	filter := bson.M{
 		"$and": bson.A{
 			bson.D{{"sender", username}},
-			bson.D{{"type", bson.D{{"$in", bson.A{"Create", "Announce"}}}}},
+			bson.D{{"type", bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}}}},
 		},
 	}
 	outboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/outbox", d.server.String(), username))
@@ -886,11 +886,13 @@ func (d *Datastore) GetActorInboxAsOrderedCollection(ctx context.Context, userna
 			{"recipient", strings.ToLower(username)},
 			{"isReply", false},
 			{"isLocal", local},
+			{"type", bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}}},
 		}
 	} else {
 		filter = bson.D{
 			{"recipient", strings.ToLower(username)},
 			{"isReply", false},
+			{"type", bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}}},
 		}
 	}
 	inboxCollection := streams.NewActivityStreamsOrderedCollection()
@@ -938,6 +940,7 @@ func (d *Datastore) GetActorInbox(ctx context.Context, username, minID, maxID st
 	filter := bson.M{
 		"recipient": strings.ToLower(username),
 		"isReply":   false,
+		"type":      bson.D{{"$in", bson.A{"Create", "Announce", "Invite"}}},
 	}
 	if local {
 		filter["isLocal"] = true

@@ -1394,7 +1394,7 @@ func (s *Server) receiveToActorInbox(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to handle Invite"), http.StatusInternalServerError)
 		}
 	case "Like":
-		if err := s.like(ctx, activityRequest); err != nil {
+		if err := s.like(ctx, activityRequest, username); err != nil {
 			log.Errorf("Failed to like specified object: got err=%v", err)
 			http.Error(w, fmt.Sprintf("Failed to like object"), http.StatusBadRequest)
 		}
@@ -1881,7 +1881,7 @@ func (s *Server) handleInvite(ctx context.Context, activityRequest vocab.Type, u
 
 // Like can only like activities and objects owned by the server.
 // See: https://www.w3.org/TR/activitypub/#like-activity-inbox
-func (s *Server) like(ctx context.Context, activityRequest vocab.Type) error {
+func (s *Server) like(ctx context.Context, activityRequest vocab.Type, username string) error {
 	like, err := activity.ParseLikeActivity(ctx, activityRequest)
 	if err != nil {
 		return err
@@ -1933,6 +1933,9 @@ func (s *Server) like(ctx context.Context, activityRequest vocab.Type) error {
 		}
 	}
 	if err := s.Datastore.LikeObject(ctx, objectID, actorID, activityID); err != nil {
+		return err
+	}
+	if err := s.Datastore.AddActivityToActorInbox(ctx, like, username, nil); err != nil {
 		return err
 	}
 	return nil
