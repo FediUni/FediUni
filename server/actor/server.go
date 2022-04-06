@@ -196,9 +196,11 @@ func (s *Server) GetNotificationsInboxPage(ctx context.Context, username, minID,
 	if orderedItems == nil {
 		return page, nil
 	}
+	log.Infof("Dereferencing notifications of username=%q", username)
 	if err := s.Client.DereferenceOrderedItems(ctx, orderedItems, 0, 3); err != nil {
-		return nil, fmt.Errorf("failed to dereference orderedItems in OrderedCollection: got err=%v", err)
+		return nil, fmt.Errorf("failed to dereference orderedItems in OrderedCollection of Notifications: got err=%v", err)
 	}
+	log.Infof("Successfully dereferenced notifications of username=%q", username)
 	return page, nil
 }
 

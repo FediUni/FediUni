@@ -674,14 +674,16 @@ func (c *Client) Invite(ctx context.Context, invite vocab.ActivityStreamsInvite,
 }
 
 // Like dereferences the actor fields of the activity.
-func (c *Client) Like(ctx context.Context, invite vocab.ActivityStreamsLike, depth int, maxDepth int) error {
+func (c *Client) Like(ctx context.Context, like vocab.ActivityStreamsLike, depth int, maxDepth int) error {
+	log.Infoln("Dereferencing Like activity")
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if depth > maxDepth {
-		log.Infof("%s Skipping dereferencing Like Activity ID=%q", prefix, invite.GetJSONLDId().Get())
+		log.Infof("%s Skipping dereferencing Like Activity ID=%q", prefix, like.GetJSONLDId().Get())
 		return nil
 	}
-	if err := c.DereferenceActor(ctx, invite.GetActivityStreamsActor(), depth, maxDepth); err != nil {
-		log.Errorf("%s Failed to dereference actors: got err=%v", prefix, err)
+	log.Infoln("Dereferencing Actor on Like Activity")
+	if err := c.DereferenceActor(ctx, like.GetActivityStreamsActor(), depth, maxDepth); err != nil {
+		log.Errorf("%s Failed to dereference Actor on Like activity: got err=%v", prefix, err)
 	}
 	return nil
 }
@@ -1225,6 +1227,8 @@ func (c *Client) DereferenceItem(ctx context.Context, item vocab.Type, depth int
 		}
 		return n, nil
 	case "Like":
+		likeID := item.GetJSONLDId().Get()
+		log.Infof("Parsing Like ID=%q", likeID.String())
 		like, err := activity.ParseLikeActivity(ctx, item)
 		if err != nil {
 			return nil, err
@@ -1233,8 +1237,28 @@ func (c *Client) DereferenceItem(ctx context.Context, item vocab.Type, depth int
 			return nil, err
 		}
 		return like, err
+	case "Invite":
+		inviteID := item.GetJSONLDId().Get()
+		log.Infof("Parsing Invite ID=%q", inviteID.String())
+		invite, err := activity.ParseInviteActivity(ctx, item)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.Invite(ctx, invite, depth, maxDepth); err != nil {
+			return nil, err
+		}
+		return invite, err
+	case "Person":
+		personID := item.GetJSONLDId().Get()
+		log.Infof("Parsing Person ID=%q", personID.String())
+		person, err := actor.ParsePerson(ctx, item)
+		if err != nil {
+			return nil, err
+		}
+		log.Infoln("Skipping dereferencing person")
+		return person, err
 	default:
-		return nil, fmt.Errorf("failed to dereference unknown Item type")
+		return nil, fmt.Errorf("failed to dereference unknown Item type: got %q", item.GetTypeName())
 	}
 }
 
