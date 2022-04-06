@@ -188,7 +188,18 @@ func (s *Server) GetNotificationsInboxAsOrderedCollection(ctx context.Context, u
 }
 
 func (s *Server) GetNotificationsInboxPage(ctx context.Context, username, minID, maxID string) (vocab.ActivityStreamsOrderedCollectionPage, error) {
-	return s.Datastore.GetNotificationsInbox(ctx, username, minID, maxID)
+	page, err := s.Datastore.GetNotificationsInbox(ctx, username, minID, maxID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from Inbox of Username=%q: got err=%v", username, err)
+	}
+	orderedItems := page.GetActivityStreamsOrderedItems()
+	if orderedItems == nil {
+		return page, nil
+	}
+	if err := s.Client.DereferenceOrderedItems(ctx, orderedItems, 0, 3); err != nil {
+		return nil, fmt.Errorf("failed to dereference orderedItems in OrderedCollection: got err=%v", err)
+	}
+	return page, nil
 }
 
 // GetPublicInboxAsOrderedCollection returns an OrderedCollection with IRIs.
