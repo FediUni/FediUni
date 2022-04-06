@@ -685,6 +685,28 @@ func (c *Client) Like(ctx context.Context, like vocab.ActivityStreamsLike, depth
 	if err := c.DereferenceActor(ctx, like.GetActivityStreamsActor(), depth, maxDepth); err != nil {
 		log.Errorf("%s Failed to dereference Actor on Like activity: got err=%v", prefix, err)
 	}
+	log.Infof("Dereferencing Object on Like Activity")
+	for iter := like.GetActivityStreamsObject().Begin(); iter != nil; iter = iter.Next() {
+		var o vocab.Type
+		var err error
+		switch {
+		case iter.IsIRI():
+			objectID := iter.GetIRI()
+			o, err = c.FetchObject(ctx, objectID, false, depth+1, maxDepth)
+			if err != nil {
+				return fmt.Errorf("failed to resolve Object ID=%q: got err=%v", objectID.String(), err)
+			}
+			log.Infof("%s Like Activity contains a Object ID=%q", prefix, objectID.String())
+		case iter.HasAny():
+			o = iter.GetType()
+		default:
+			return fmt.Errorf("%s Like Activity does not contain object: got=%v", prefix, iter)
+		}
+		o, err = c.DereferenceItem(ctx, o, depth, maxDepth)
+		if err != nil {
+			return fmt.Errorf("%s Failed to dereference item on Like Activity: got err=%v", prefix, err)
+		}
+	}
 	return nil
 }
 
@@ -1139,6 +1161,17 @@ func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.Activi
 		switch {
 		case iter.IsIRI():
 			itemID = iter.GetIRI()
+			// Likes need to be dereferenced manually as Mastodon doesn't
+			// support retrieving Like activities.
+		case iter.IsActivityStreamsLike():
+			like, err := activity.ParseLikeActivity(ctx, iter.GetType())
+			if err != nil {
+				log.Errorf("Failed to parse Like activity: got err=%v", err)
+			}
+			err = c.Like(ctx, like, depth+1, maxDepth)
+			if err != nil {
+				log.Errorf("Failed to dereference Like activity: got err=%v", err)
+			}
 		case iter.HasAny():
 			itemID, err = pub.GetId(iter.GetType())
 			if err != nil {
