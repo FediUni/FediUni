@@ -634,12 +634,15 @@ func (s *Server) getActivityObject(w http.ResponseWriter, r *http.Request) {
 	var o vocab.Type
 	objects := a.GetActivityStreamsObject()
 	for iter := objects.Begin(); iter != objects.End(); iter = iter.Next() {
-		o = iter.GetActivityStreamsObject()
+		switch {
+		case iter.HasAny():
+			o = iter.GetType()
+		}
 	}
 	m, err := activity.JSON(o)
 	if err != nil {
-		log.Errorf("failed to serialize activity with ID=%q: got err=%v", activityID, err)
-		http.Error(w, "failed to load activity", http.StatusNotFound)
+		log.Errorf("failed to serialize object with ID=%q: got err=%v", activityID, err)
+		http.Error(w, "failed to load object", http.StatusNotFound)
 		return
 	}
 	w.Header().Add("Content-Type", "application/activity+json")
