@@ -675,7 +675,7 @@ func (c *Client) Invite(ctx context.Context, invite vocab.ActivityStreamsInvite,
 
 // Like dereferences the actor fields of the activity.
 func (c *Client) Like(ctx context.Context, like vocab.ActivityStreamsLike, depth int, maxDepth int) error {
-	log.Infoln("Dereferencing Like activity")
+	log.Infof("Dereferencing Like activity with ID=%q", like.GetJSONLDId().GetIRI().String())
 	prefix := fmt.Sprintf("(Depth=%d)", depth)
 	if depth > maxDepth {
 		log.Infof("%s Skipping dereferencing Like Activity ID=%q", prefix, like.GetJSONLDId().Get())
@@ -1181,7 +1181,7 @@ func (c *Client) DereferenceOrderedItems(ctx context.Context, items vocab.Activi
 			log.Infof("%s Unexpected item: got=%v", prefix, iter)
 		}
 		if itemID == nil {
-			return nil
+			continue
 		}
 		log.Infof("%s Dereferencing Item ID=%q", prefix, itemID.String())
 		eg.Go(func() error {
