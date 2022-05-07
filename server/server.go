@@ -834,6 +834,7 @@ func (s *Server) getAnyActivity(w http.ResponseWriter, r *http.Request) {
 	case "Announce":
 	case "Invite":
 	case "Note":
+	case "Event":
 	default:
 		http.Error(w, "Failed to retrieve an appropriate activity", http.StatusBadRequest)
 		return
