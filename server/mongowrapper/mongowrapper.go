@@ -1186,7 +1186,7 @@ func (d *Datastore) GetNotificationsInboxAsOrderedCollection(ctx context.Context
 				bson.D{{"type", "Invite"}},
 				bson.D{{"type", "Like"}},
 			}},
-			bson.M{"actor.id": bson.D{{"$ne", fmt.Sprintf("%s/api/actor/%s", d.server.String(), username)}}},
+			bson.M{"actor.id": bson.D{{"$ne", fmt.Sprintf("https://%s/api/actor/%s", d.server.Hostname(), username)}}},
 		},
 	}
 	inboxCollection := streams.NewActivityStreamsOrderedCollection()
