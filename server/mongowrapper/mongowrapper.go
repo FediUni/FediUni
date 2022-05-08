@@ -1230,6 +1230,8 @@ func (d *Datastore) GetNotificationsInbox(ctx context.Context, username, minID, 
 	log.Infof("Searching for Recipient with Username=%q", username)
 	inbox := d.client.Database("FediUni").Collection("inbox")
 	inboxURL, err := url.Parse(fmt.Sprintf("%s/actor/%s/inbox", d.server.String(), username))
+	actorID := fmt.Sprintf("https://%s/api/actor/%s", d.server.Hostname(), username)
+	log.Infof("Excluding Notifications from Actor ID=%q", actorID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse outbox URL: got err=%v", err)
 	}
@@ -1240,7 +1242,7 @@ func (d *Datastore) GetNotificationsInbox(ctx context.Context, username, minID, 
 				bson.D{{"type", "Invite"}},
 				bson.D{{"type", "Like"}},
 			}},
-			bson.M{"actor.id": bson.D{{"$ne", fmt.Sprintf("%s/api/actor/%s", d.server.String(), username)}}},
+			bson.M{"actor.id": bson.D{{"$ne", actorID}}},
 		},
 	}
 	opts := options.Find().SetSort(bson.D{{"_id", -1}}).SetLimit(20)
