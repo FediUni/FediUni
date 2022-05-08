@@ -219,6 +219,14 @@ func (c *Client) FetchObject(ctx context.Context, iri *url.URL, forceUpdate bool
 		if err := c.Note(ctx, note, depth, maxDepth); err != nil {
 			return nil, err
 		}
+	case "Event":
+		event, err := object.ParseEvent(ctx, o)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.Event(ctx, event, depth, maxDepth); err != nil {
+			return nil, err
+		}
 	}
 	log.Infof("Returning Object of Type=%q", typeName)
 	return o, nil
