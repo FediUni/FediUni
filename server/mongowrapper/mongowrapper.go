@@ -1179,6 +1179,8 @@ func (d *Datastore) GetEventInbox(ctx context.Context, username, minID, maxID st
 // GetNotificationsInboxAsOrderedCollection returns Likes and Invites.
 func (d *Datastore) GetNotificationsInboxAsOrderedCollection(ctx context.Context, username string) (vocab.ActivityStreamsOrderedCollection, error) {
 	inbox := d.client.Database("FediUni").Collection("inbox")
+	actorID := fmt.Sprintf("https://%s/api/actor/%s", d.server.Hostname(), username)
+	log.Infof("Excluding Notifications from Actor ID=%q", actorID)
 	filter := bson.M{
 		"$and": bson.A{
 			bson.D{{"recipient", strings.ToLower(username)}},
@@ -1186,7 +1188,7 @@ func (d *Datastore) GetNotificationsInboxAsOrderedCollection(ctx context.Context
 				bson.D{{"type", "Invite"}},
 				bson.D{{"type", "Like"}},
 			}},
-			bson.M{"actor.id": bson.D{{"$ne", fmt.Sprintf("https://%s/api/actor/%s", d.server.Hostname(), username)}}},
+			bson.M{"actor.id": bson.D{{"$ne", actorID}}},
 		},
 	}
 	inboxCollection := streams.NewActivityStreamsOrderedCollection()
