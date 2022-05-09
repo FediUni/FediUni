@@ -1382,9 +1382,9 @@ func (d *Datastore) DeleteObjectFromInbox(ctx context.Context, objectID *url.URL
 func (d *Datastore) AddHostToSameInstitute(ctx context.Context, instance *url.URL) error {
 	sameInstitute := d.client.Database("FediUni").Collection("sameInstitute")
 	opts := options.Update().SetUpsert(true)
-	res, err := sameInstitute.UpdateOne(ctx, bson.M{"host": instance.Host}, bson.M{
+	res, err := sameInstitute.UpdateOne(ctx, bson.M{"host": instance.Host}, bson.M{"$set": bson.M{
 		"host": instance.Host,
-	}, opts)
+	}}, opts)
 	if err != nil {
 		return fmt.Errorf("failed to insert host to University: got err=%v", err)
 	}
