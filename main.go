@@ -18,13 +18,12 @@ import (
 )
 
 var (
-	config = flag.String("config", "/run/secrets/", "The directory with YAML config containing MongoDB URI. This is in addition to the working directory.")
+	config = flag.String("config", "/run/secrets", "The directory with YAML config containing MongoDB URI. This is in addition to the working directory.")
 	port   = flag.Int("port", 8080, "The port for the FediUni instance to listen on.")
 )
 
 func main() {
 	flag.Parse()
-	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath(*config)
 	if err := viper.ReadInConfig(); err != nil {
